@@ -1,0 +1,474 @@
+"""Molecular geometry engine — 3D coordinates → 2D ball-and-stick specs.
+
+A molecule (or crystal) is described by its atoms' 3D coordinates and a
+bond list. `_model` projects that with an isometric camera and returns a
+list of *shape-spec* dicts (circles for lit spheres, lines for sticks,
+dashed lines for cell diagonals). `render.py` turns the specs into Qt
+graphics items, so everything stays plain, editable, exportable vectors —
+no OpenGL.
+
+The engine also holds the interactive-builder operations (add a bonded
+atom respecting valence, delete, drag an atom in the view plane) and a
+small `Molecule` container that pairs atoms/bonds with a view.
+
+Copyright (C) 2026 Gwilherm Kerherve
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+"""
+
+import math
+
+from PyQt5.QtGui import QColor
+
+from . import elements
+
+_BOND_COLOR = "#6b6f76"
+_FRAME_COLOR = "#202020"         # solid unit-cell cube edges (thick, dark)
+_EDGE_COLOR = "#555555"          # dashed body/face diagonals
+
+
+# ------------------------------------------------------------ colour helpers
+def _mix(a, b, t):
+    """Blend hex colour *a* toward *b* by fraction *t* (0..1)."""
+    ca, cb = QColor(a), QColor(b)
+    r = round(ca.red() + (cb.red() - ca.red()) * t)
+    g = round(ca.green() + (cb.green() - ca.green()) * t)
+    bl = round(ca.blue() + (cb.blue() - ca.blue()) * t)
+    return "#%02x%02x%02x" % (r, g, bl)
+
+
+def atom_specs(cx, cy, r, element, label=False):
+    """A single lit-sphere spec for *element* centred at (cx, cy), radius r.
+
+    The sphere is a circle filled with a `sun` gradient: a near-white
+    highlight at the top-left fading to a darkened rim, so it reads as a
+    3D ball in the element's CPK colour."""
+    body = elements.color(element)
+    hi = _mix(body, "#ffffff", 0.62)
+    rim = _mix(body, "#000000", 0.40)
+    stroke = _mix(body, "#000000", 0.52)
+    spec = {"shape": "circle", "x": cx - r, "y": cy - r,
+            "w": 2 * r, "h": 2 * r, "stroke": stroke,
+            "width": max(0.8, r * 0.10),
+            "fill": {"kind": "sun", "c1": rim, "c2": hi}}
+    if label:
+        spec["label"] = element
+    return [spec]
+
+
+def bond_specs(p1, p2, order=1, width=6.0, color=_BOND_COLOR):
+    """Stick spec(s) between 2D points *p1* and *p2*.
+
+    Single/double/triple bonds are one/two/three parallel lines offset
+    perpendicular to the bond; multi-bond lines are drawn thinner."""
+    (x1, y1), (x2, y2) = p1, p2
+    dx, dy = x2 - x1, y2 - y1
+    length = math.hypot(dx, dy)
+    if length < 1e-6:
+        return []
+    px, py = -dy / length, dx / length          # unit perpendicular
+    if order <= 1:
+        rows, lw, sep = [0.0], width, 0.0
+    elif order == 2:
+        rows, lw, sep = [-1.0, 1.0], width * 0.62, width * 0.85
+    else:
+        rows, lw, sep = [-1.0, 0.0, 1.0], width * 0.52, width * 1.0
+    out = []
+    for o in rows:
+        ox, oy = px * o * sep, py * o * sep
+        out.append({"shape": "line", "x1": x1 + ox, "y1": y1 + oy,
+                    "x2": x2 + ox, "y2": y2 + oy,
+                    "stroke": color, "width": lw})
+    return out
+
+
+# ------------------------------------------------------- isometric projection
+_AZ = math.radians(28.0)
+_EL = math.radians(20.0)
+DEFAULT_AZ = _AZ
+DEFAULT_EL = _EL
+
+
+def _proj(x, y, z, az=_AZ, el=_EL):
+    """Project a 3D point to (screen_x, screen_y, depth) at view (az, el).
+
+    Rotate about the vertical axis by *az*, tilt by *el*, then project
+    orthographically. *depth* grows toward the viewer, so sorting atoms by
+    it draws far spheres before near ones."""
+    ca, sa = math.cos(az), math.sin(az)
+    ce, se = math.cos(el), math.sin(el)
+    xr = x * ca - y * sa
+    yr = x * sa + y * ca
+    sx = xr
+    sy = yr * se - z * ce            # screen y (grows downward)
+    depth = yr * ce + z * se         # toward the viewer
+    return sx, sy, depth
+
+
+def _dashed_line(p1, p2, color, width, dash=6.0, gap=4.0):
+    """A dashed segment as a run of short solid line specs (so the dashes
+    are geometry that survives export)."""
+    (x1, y1), (x2, y2) = p1, p2
+    dx, dy = x2 - x1, y2 - y1
+    length = math.hypot(dx, dy) or 1.0
+    ux, uy = dx / length, dy / length
+    out = []
+    pos = 0.0
+    while pos < length:
+        end = min(pos + dash, length)
+        out.append({"shape": "line", "x1": x1 + ux * pos, "y1": y1 + uy * pos,
+                    "x2": x1 + ux * end, "y2": y1 + uy * end,
+                    "stroke": color, "width": width})
+        pos = end + gap
+    return out
+
+
+def _centroid(atoms):
+    n = len(atoms) or 1
+    return (sum(a[1] for a in atoms) / n, sum(a[2] for a in atoms) / n,
+            sum(a[3] for a in atoms) / n)
+
+
+def _spread(atoms, edges, factor, centroid=None):
+    """Move atoms (and cell edges) apart from their centroid by *factor*,
+    lengthening the bonds relative to the spheres."""
+    if factor == 1.0 or not atoms:
+        return atoms, edges
+    cx, cy, cz = centroid if centroid is not None else _centroid(atoms)
+
+    def sc(p):
+        return (cx + (p[0] - cx) * factor, cy + (p[1] - cy) * factor,
+                cz + (p[2] - cz) * factor)
+    at = [(a[0], *sc((a[1], a[2], a[3]))) for a in atoms]
+    ed = None
+    if edges:
+        ed = [(sc(e[0]), sc(e[1]), e[2] if len(e) > 2 else "solid")
+              for e in edges]
+    return at, ed
+
+
+def _model(atoms, bonds, w, h, edges=None, rscale=1.0, labels=False,
+           margin=0.12, az=_AZ, el=_EL, bond_scale=1.0, tag_atoms=False,
+           frozen=None):
+    """Lay out a 3D model into the (w, h) box and return its shape specs.
+
+    *atoms* is a list of ``(element, x, y, z)``; *bonds* a list of
+    ``(i, j, order)`` index pairs; *edges* an optional list of
+    ``(p1, p2)`` or ``(p1, p2, style)`` unit-cell segments where *style*
+    is ``"solid"`` or ``"dash"``. *bond_scale* spreads the atoms apart to
+    lengthen the bonds. The projected model is scaled uniformly (spheres
+    stay round) to fit the box, then drawn back-to-front: edges, bonds,
+    spheres. Passing *frozen* (from `fit_params`) reuses a captured
+    scale/origin/centroid so dragging one atom doesn't rescale the rest."""
+    fc = frozen.get("centroid") if frozen else None
+    atoms, edges = _spread(atoms, edges, bond_scale, fc)
+    proj = [_proj(a[1], a[2], a[3], az, el) for a in atoms]
+    rad = [elements.radius(a[0]) * rscale for a in atoms]
+
+    xs_lo = [proj[i][0] - rad[i] for i in range(len(atoms))]
+    xs_hi = [proj[i][0] + rad[i] for i in range(len(atoms))]
+    ys_lo = [proj[i][1] - rad[i] for i in range(len(atoms))]
+    ys_hi = [proj[i][1] + rad[i] for i in range(len(atoms))]
+    pedges = []
+    if edges:
+        for e in edges:
+            style = e[2] if len(e) > 2 else "solid"
+            pa = _proj(*e[0], az, el)
+            pb = _proj(*e[1], az, el)
+            pedges.append((pa, pb, style))
+            for px, py, _ in (pa, pb):
+                xs_lo.append(px)
+                xs_hi.append(px)
+                ys_lo.append(py)
+                ys_hi.append(py)
+
+    if not xs_lo:                       # empty model
+        return []
+    minx, maxx = min(xs_lo), max(xs_hi)
+    miny, maxy = min(ys_lo), max(ys_hi)
+    spanx = (maxx - minx) or 1.0
+    spany = (maxy - miny) or 1.0
+    if frozen and frozen.get("scale"):
+        s = frozen["scale"]
+        ox, oy = frozen["origin"]
+    else:
+        m = margin * min(w, h)
+        s = min((w - 2 * m) / spanx, (h - 2 * m) / spany)
+        ox = (w - s * spanx) / 2.0 - s * minx
+        oy = (h - s * spany) / 2.0 - s * miny
+
+    def T(px, py):
+        return ox + s * px, oy + s * py
+
+    specs = []
+    ew = max(2.2, s * 0.062)
+    for pa, pb, style in pedges:
+        p1, p2 = T(pa[0], pa[1]), T(pb[0], pb[1])
+        if style == "dash":
+            specs += _dashed_line(p1, p2, _EDGE_COLOR, max(1.0, s * 0.028),
+                                  dash=s * 0.10, gap=s * 0.07)
+        else:
+            specs.append({"shape": "line", "x1": p1[0], "y1": p1[1],
+                          "x2": p2[0], "y2": p2[1], "stroke": _FRAME_COLOR,
+                          "width": ew})
+    bw = max(2.0, s * 0.11)
+    for i, j, order in bonds:
+        specs += bond_specs(T(proj[i][0], proj[i][1]),
+                            T(proj[j][0], proj[j][1]), order, width=bw)
+    for idx in sorted(range(len(atoms)), key=lambda k: proj[k][2]):
+        cx, cy = T(proj[idx][0], proj[idx][1])
+        a_specs = atom_specs(cx, cy, rad[idx] * s, atoms[idx][0], label=labels)
+        if tag_atoms and a_specs:
+            a_specs[0]["_atom"] = idx        # for builder hit-testing
+        specs += a_specs
+    return specs
+
+
+# ------------------------------------------------------- layout / drag helpers
+def fit_params(atoms, bonds, w, h, az, el, bond, rscale=0.92):
+    """Capture the current layout's scale / origin / centroid, so the
+    builder can drag one atom without the rest rescaling or recentring."""
+    centroid = _centroid(atoms)
+    at, _ = _spread(atoms, None, bond, centroid)
+    proj = [_proj(a[1], a[2], a[3], az, el) for a in at]
+    rad = [elements.radius(a[0]) * rscale for a in at]
+    xs_lo = [proj[i][0] - rad[i] for i in range(len(at))]
+    xs_hi = [proj[i][0] + rad[i] for i in range(len(at))]
+    ys_lo = [proj[i][1] - rad[i] for i in range(len(at))]
+    ys_hi = [proj[i][1] + rad[i] for i in range(len(at))]
+    minx, maxx = min(xs_lo), max(xs_hi)
+    miny, maxy = min(ys_lo), max(ys_hi)
+    spanx = (maxx - minx) or 1.0
+    spany = (maxy - miny) or 1.0
+    m = 0.12 * min(w, h)
+    s = min((w - 2 * m) / spanx, (h - 2 * m) / spany)
+    ox = (w - s * spanx) / 2.0 - s * minx
+    oy = (h - s * spany) / 2.0 - s * miny
+    return {"scale": s, "origin": (ox, oy), "centroid": centroid}
+
+
+def drag_atom(atoms, index, dsx, dsy, az, el, bond, scale):
+    """Move atom *index* by a screen delta (dsx, dsy) in the current view."""
+    ca, sa = math.cos(az), math.sin(az)
+    ce, se = math.cos(el), math.sin(el)
+    r = (ca, -sa, 0.0)                     # world axis that moves screen-x
+    g = (sa * se, ca * se, -ce)            # world axis that moves screen-y
+    k = 1.0 / (scale * (bond or 1.0))
+    atoms[index][1] += (dsx * r[0] + dsy * g[0]) * k
+    atoms[index][2] += (dsx * r[1] + dsy * g[1]) * k
+    atoms[index][3] += (dsx * r[2] + dsy * g[2]) * k
+
+
+def specs_from_atoms(atoms, bonds, w, h, az=None, el=None, bond=1.0,
+                     rscale=0.92, tag_atoms=False, frozen=None, labels=False):
+    """Shape specs for a custom (atoms, bonds) model."""
+    return _model(atoms, bonds, w, h, rscale=rscale,
+                  az=DEFAULT_AZ if az is None else az,
+                  el=DEFAULT_EL if el is None else el, bond_scale=bond,
+                  tag_atoms=tag_atoms, frozen=frozen, labels=labels)
+
+
+# ------------------------------------------------------- generic 3D vectors
+_INV3 = 1.0 / math.sqrt(3.0)
+#: The four sp3 tetrahedral directions (unit vectors).
+TETRA = [(_INV3, _INV3, _INV3), (_INV3, -_INV3, -_INV3),
+         (-_INV3, _INV3, -_INV3), (-_INV3, -_INV3, _INV3)]
+
+
+def add(atoms, el, p):
+    atoms.append((el, p[0], p[1], p[2]))
+    return len(atoms) - 1
+
+
+def scale(v, k):
+    return (v[0] * k, v[1] * k, v[2] * k)
+
+
+def plus(p, v):
+    return (p[0] + v[0], p[1] + v[1], p[2] + v[2])
+
+
+def _norm(v):
+    return math.sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2])
+
+
+def _unit(v):
+    n = _norm(v) or 1.0
+    return (v[0] / n, v[1] / n, v[2] / n)
+
+
+def _cross(a, b):
+    return (a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2],
+            a[0] * b[1] - a[1] * b[0])
+
+
+def _perp(v):
+    ref = (0.0, 0.0, 1.0) if abs(v[2]) < 0.9 else (0.0, 1.0, 0.0)
+    return _unit(_cross(v, ref))
+
+
+# ------------------------------------------------------- interactive builder
+_COS_TET = 1.0 / 3.0                # |cos(109.47°)|
+_SIN_TET = math.sqrt(8.0) / 3.0    # sin(109.47°)
+
+
+def single_atom(element="C"):
+    """A fresh one-atom structure to start building from."""
+    return [[element, 0.0, 0.0, 0.0]], []
+
+
+def _bond_length(a, b):
+    return 1.0 if "H" in (a, b) else 1.5
+
+
+def used_valence(bonds, index):
+    """Bonds already on atom *index* (summing bond orders)."""
+    return sum(o for i, j, o in bonds if index in (i, j))
+
+
+def free_valence(atoms, bonds, index):
+    """How many more bonds atom *index* can take."""
+    return elements.valence(atoms[index][0]) - used_valence(bonds, index)
+
+
+def _neighbor_dirs(atoms, bonds, anchor):
+    ax, ay, az = atoms[anchor][1], atoms[anchor][2], atoms[anchor][3]
+    out = []
+    for i, j, _o in bonds:
+        k = j if i == anchor else (i if j == anchor else None)
+        if k is not None:
+            out.append((k, _unit((atoms[k][1] - ax, atoms[k][2] - ay,
+                                  atoms[k][3] - az))))
+    return out
+
+
+def _chain_direction(atoms, bonds, anchor, neigh_k, neigh_dir):
+    """Direction to extend a chain at *anchor* (one heavy neighbour), as a
+    trans (anti-periplanar) zig-zag so a chain stays straight."""
+    forward = (-neigh_dir[0], -neigh_dir[1], -neigh_dir[2])
+    prev = [d for k, d in _neighbor_dirs(atoms, bonds, neigh_k) if k != anchor]
+    normal = _cross(prev[0], neigh_dir) if prev else (0.0, 0.0, 1.0)
+    if _norm(normal) < 1e-6:
+        normal = (0.0, 0.0, 1.0)
+    normal = _unit(normal)
+    side = _unit(_cross(normal, forward))
+    sign = 1.0
+    if prev:
+        s_prev = (prev[0][0] * side[0] + prev[0][1] * side[1]
+                  + prev[0][2] * side[2])
+        sign = -1.0 if s_prev > 0 else 1.0
+    return _unit((forward[0] * _COS_TET + side[0] * _SIN_TET * sign,
+                  forward[1] * _COS_TET + side[1] * _SIN_TET * sign,
+                  forward[2] * _COS_TET + side[2] * _SIN_TET * sign))
+
+
+def _free_direction(atoms, bonds, anchor):
+    """A tetrahedral direction at *anchor* not already occupied by a bond."""
+    dirs = [d for _k, d in _neighbor_dirs(atoms, bonds, anchor)]
+    if not dirs:
+        return (1.0, 0.0, 0.0)
+    if len(dirs) == 1:
+        n0 = dirs[0]
+        p = _perp(n0)
+        return _unit((-n0[0] * _COS_TET + p[0] * _SIN_TET,
+                      -n0[1] * _COS_TET + p[1] * _SIN_TET,
+                      -n0[2] * _COS_TET + p[2] * _SIN_TET))
+    if len(dirs) == 2:
+        bis = _unit((-(dirs[0][0] + dirs[1][0]), -(dirs[0][1] + dirs[1][1]),
+                     -(dirs[0][2] + dirs[1][2])))
+        normal = _cross(dirs[0], dirs[1])
+        normal = _perp(dirs[0]) if _norm(normal) < 1e-6 else _unit(normal)
+        for sign in (1.0, -1.0):
+            cand = _unit((bis[0] * 0.577 + normal[0] * 0.816 * sign,
+                          bis[1] * 0.577 + normal[1] * 0.816 * sign,
+                          bis[2] * 0.577 + normal[2] * 0.816 * sign))
+            if all(cand[0] * d[0] + cand[1] * d[1] + cand[2] * d[2] < 0.6
+                   for d in dirs):
+                return cand
+        return bis
+    s = (sum(d[0] for d in dirs), sum(d[1] for d in dirs),
+         sum(d[2] for d in dirs))
+    return _perp(dirs[0]) if _norm(s) < 1e-6 else _unit((-s[0], -s[1], -s[2]))
+
+
+def add_bonded_atom(atoms, bonds, anchor, element, order=1):
+    """Add an *element* atom bonded to atom *anchor*. Mutates the lists;
+    returns the new atom's index."""
+    ax, ay, az = atoms[anchor][1], atoms[anchor][2], atoms[anchor][3]
+    neigh = _neighbor_dirs(atoms, bonds, anchor)
+    if len(neigh) == 1:
+        d = _chain_direction(atoms, bonds, anchor, neigh[0][0], neigh[0][1])
+    else:
+        d = _free_direction(atoms, bonds, anchor)
+    length = _bond_length(element, atoms[anchor][0])
+    atoms.append([element, ax + d[0] * length, ay + d[1] * length,
+                  az + d[2] * length])
+    idx = len(atoms) - 1
+    bonds.append([anchor, idx, order])
+    return idx
+
+
+def delete_atom(atoms, bonds, index):
+    """Remove atom *index* and any bonds to it, re-indexing the rest."""
+    atoms.pop(index)
+    kept = []
+    for i, j, o in bonds:
+        if i == index or j == index:
+            continue
+        kept.append([i - (i > index), j - (j > index), o])
+    bonds[:] = kept
+
+
+# ----------------------------------------------------------------- container
+class Molecule:
+    """An editable structure plus its current 3D view.
+
+    ``atoms`` is a list of ``[element, x, y, z]`` and ``bonds`` a list of
+    ``[i, j, order]``. ``name`` is the library key it came from (or a free
+    label); ``crystal`` marks fixed-lattice models (not atom-editable)."""
+
+    def __init__(self, atoms=None, bonds=None, name="custom", label=None,
+                 az=None, el=None, bond=None, rscale=0.92, crystal=False,
+                 edges=None):
+        self.atoms = [list(a) for a in (atoms or [])]
+        self.bonds = [list(b) for b in (bonds or [])]
+        self.edges = list(edges) if edges else None
+        self.name = name
+        self.label = label or name
+        self.az = DEFAULT_AZ if az is None else az
+        self.el = DEFAULT_EL if el is None else el
+        self.bond = 1.6 if bond is None else bond
+        self.rscale = rscale
+        self.crystal = crystal
+
+    def clone(self):
+        return Molecule(self.atoms, self.bonds, self.name, self.label,
+                        self.az, self.el, self.bond, self.rscale,
+                        self.crystal, self.edges)
+
+    def specs(self, w, h, tag_atoms=False, frozen=None, labels=False):
+        return _model(self.atoms, self.bonds, w, h, edges=self.edges,
+                      rscale=self.rscale, az=self.az, el=self.el,
+                      bond_scale=self.bond, tag_atoms=tag_atoms,
+                      frozen=frozen, labels=labels)
+
+    def formula(self):
+        """Hill-system molecular formula string (C first, H second, rest
+        alphabetical)."""
+        counts = {}
+        for a in self.atoms:
+            counts[a[0]] = counts.get(a[0], 0) + 1
+        order = []
+        if "C" in counts:
+            order.append("C")
+        if "H" in counts:
+            order.append("H")
+        order += sorted(e for e in counts if e not in ("C", "H"))
+        out = ""
+        for e in order:
+            n = counts[e]
+            out += e + (str(n) if n > 1 else "")
+        return out
