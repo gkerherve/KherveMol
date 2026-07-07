@@ -62,16 +62,24 @@ class MainWindow(QMainWindow):
         lib_dock.setAllowedAreas(Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea)
         self.tree = QTreeWidget()
         self.tree.setHeaderHidden(True)
-        # Built-in 3D models (build without RDKit) — expanded.
+        # Two clear sections. Built-in 3D models (build without RDKit),
+        # sub-groups expanded:
+        models_top = self._tree_header("Built-in 3D models")
         for title, keys in library.CATEGORIES:
-            self._tree_group(title, [(library.label(k), ("model", k))
-                                     for k in keys], True,
-                             lambda k: _key_color(k[1]))
-        # The full named-compound catalog (SMILES) — collapsed groups.
+            self._tree_group(models_top, title,
+                             [(library.label(k), ("model", k)) for k in keys],
+                             True, lambda k: _key_color(k[1]))
+        models_top.setExpanded(True)
+        # The full named-compound catalog (SMILES), grouped by family — the
+        # top node is expanded so all the families show, but each family
+        # starts collapsed (there are hundreds of compounds):
+        n = len(catalog.all_entries())
+        cpd_top = self._tree_header(f"Named compounds — {n}")
         for cat, entries in catalog.grouped():
-            self._tree_group(cat, [(name, ("smiles", smi))
-                                   for name, smi in entries], False,
-                             lambda _v: elements.color("C"))
+            self._tree_group(cpd_top, cat,
+                             [(name, ("smiles", smi)) for name, smi in entries],
+                             False, lambda _v: elements.color("C"))
+        cpd_top.setExpanded(True)
         self.tree.itemActivated.connect(self._tree_load)
         self.tree.itemDoubleClicked.connect(self._tree_load)
         lib_dock.setWidget(self.tree)
@@ -92,22 +100,33 @@ class MainWindow(QMainWindow):
         self.addDockWidget(Qt.BottomDockWidgetArea, pt_dock)
         self._ptable_dock = pt_dock
 
-    def _tree_group(self, title, entries, expanded, color_fn):
-        """Add a bold category with (label, (kind, value)) leaves to the
-        library tree."""
-        parent = QTreeWidgetItem([title])
-        font = parent.font(0)
+    def _tree_header(self, title):
+        """A bold, non-selectable top-level section header in the tree."""
+        item = QTreeWidgetItem([title])
+        font = item.font(0)
         font.setBold(True)
-        parent.setFont(0, font)
-        self.tree.addTopLevelItem(parent)
+        font.setPointSizeF(font.pointSizeF() + 1)
+        item.setFont(0, font)
+        item.setFlags(Qt.ItemIsEnabled)             # header, not a leaf
+        self.tree.addTopLevelItem(item)
+        return item
+
+    def _tree_group(self, parent, title, entries, expanded, color_fn):
+        """Add a bold category (with (label, (kind, value)) leaves) under
+        *parent* in the library tree."""
+        grp = QTreeWidgetItem([title])
+        font = grp.font(0)
+        font.setBold(True)
+        grp.setFont(0, font)
+        parent.addChild(grp)
         for label, data in entries:
             child = QTreeWidgetItem([label])
             child.setData(0, Qt.UserRole, data)
             child.setIcon(0, icons.element_icon(color_fn(data)))
             if data[0] == "smiles":
                 child.setToolTip(0, data[1])
-            parent.addChild(child)
-        parent.setExpanded(expanded)
+            grp.addChild(child)
+        grp.setExpanded(expanded)
 
     def _build_ai_dock(self):
         self.ai_dock = AiDock(self)
