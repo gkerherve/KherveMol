@@ -463,6 +463,69 @@ def _xtal_cscl():
     return _crystal(pts, a, extra_edges=_body_diagonals(a))
 
 
+def _tetra_interior(a):
+    """The four diamond/zinc-blende interior sites in a cube of edge *a*."""
+    return [(a / 4, a / 4, a / 4), (3 * a / 4, 3 * a / 4, a / 4),
+            (3 * a / 4, a / 4, 3 * a / 4), (a / 4, 3 * a / 4, 3 * a / 4)]
+
+
+def _face_centers(a):
+    return [(a / 2, a / 2, 0), (a / 2, a / 2, a), (a / 2, 0, a / 2),
+            (a / 2, a, a / 2), (0, a / 2, a / 2), (a, a / 2, a / 2)]
+
+
+def _xtal_perovskite():
+    """ABX3 perovskite (CaTiO3): A (Ca) at the corners, B (Ti) at the body
+    centre, X (O) at the face centres — with the central TiO6 octahedron."""
+    a = 3.2
+    atoms = [("Ca", p[0], p[1], p[2]) for p in _cube_corners(a)]
+    ti = len(atoms)
+    atoms.append(("Ti", a / 2, a / 2, a / 2))
+    o0 = len(atoms)
+    for p in _face_centers(a):
+        atoms.append(("O", p[0], p[1], p[2]))
+    bonds = [(ti, o0 + k, 1) for k in range(6)]        # TiO6 octahedron
+    return list(atoms), bonds, _cube_edges(a)
+
+
+def _xtal_zincblende():
+    """Zinc blende (ZnS): S on an FCC lattice, Zn in four tetrahedral holes,
+    each Zn bonded to its four nearest S (like diamond, two elements)."""
+    a = 4.0
+    atoms = []
+    for p in _cube_corners(a):
+        _add(atoms, "S", p)
+    for p in _face_centers(a):
+        _add(atoms, "S", p)
+    zn_idx = [_add(atoms, "Zn", p) for p in _tetra_interior(a)]
+    bonds = []
+    for zi in zn_idx:
+        zp = (atoms[zi][1], atoms[zi][2], atoms[zi][3])
+        near = sorted(range(len(atoms)),
+                      key=lambda k: (atoms[k][1] - zp[0]) ** 2
+                      + (atoms[k][2] - zp[1]) ** 2
+                      + (atoms[k][3] - zp[2]) ** 2)
+        for k in near[1:5]:
+            bonds.append((zi, k, 1))
+    return atoms, bonds, _cube_edges(a)
+
+
+def _xtal_fluorite():
+    """Fluorite (CaF2): Ca on an FCC lattice, F filling all eight
+    tetrahedral holes."""
+    a = 4.0
+    atoms = []
+    for p in _cube_corners(a):
+        _add(atoms, "Ca", p)
+    for p in _face_centers(a):
+        _add(atoms, "Ca", p)
+    for x in (a / 4, 3 * a / 4):
+        for y in (a / 4, 3 * a / 4):
+            for z in (a / 4, 3 * a / 4):
+                _add(atoms, "F", (x, y, z))
+    return atoms, [], _cube_edges(a)
+
+
 # ------------------------------------------------------------------- registry
 #: name -> (builder returning (atoms, bonds, edges), radius scale)
 _MODELS = {
@@ -482,7 +545,8 @@ _MODELS = {
     "simple_cubic": (_xtal_simple_cubic, 0.62), "bcc": (_xtal_bcc, 0.58),
     "fcc": (_xtal_fcc, 0.52), "hcp": (_xtal_hcp, 0.5),
     "diamond": (_xtal_diamond, 0.42), "nacl": (_xtal_nacl, 0.5),
-    "cscl": (_xtal_cscl, 0.6),
+    "cscl": (_xtal_cscl, 0.6), "perovskite": (_xtal_perovskite, 0.5),
+    "zincblende": (_xtal_zincblende, 0.44), "fluorite": (_xtal_fluorite, 0.44),
 }
 
 #: Polymer repeat units share the zig-zag backbone builder.
@@ -509,7 +573,8 @@ LABELS = {
     "pvc": "PVC", "ptfe": "PTFE", "polystyrene": "Polystyrene",
     "simple_cubic": "Simple cubic", "bcc": "BCC", "fcc": "FCC",
     "hcp": "HCP", "diamond": "Diamond", "nacl": "NaCl (rock salt)",
-    "cscl": "CsCl",
+    "cscl": "CsCl", "perovskite": "Perovskite (CaTiO₃)",
+    "zincblende": "Zinc blende (ZnS)", "fluorite": "Fluorite (CaF₂)",
 }
 CATEGORIES = [
     ("Simple molecules",
@@ -523,7 +588,8 @@ CATEGORIES = [
     ("Polymers",
      ["polyethylene", "polypropylene", "pvc", "ptfe", "polystyrene", "pet"]),
     ("Crystal structures",
-     ["simple_cubic", "bcc", "fcc", "hcp", "diamond", "nacl", "cscl"]),
+     ["simple_cubic", "bcc", "fcc", "hcp", "diamond", "nacl", "cscl",
+      "zincblende", "fluorite", "perovskite"]),
 ]
 
 #: Default bond spread for molecules (>1 so sticks read); crystals stay 1.0.
