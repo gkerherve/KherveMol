@@ -120,11 +120,22 @@ module and import.
                      `available()`): `molecule_from_smiles` (AddHs → ETKDG
                      embed → MMFF/UFF cleanup → 3D `Molecule`),
                      `sketch_from_smiles` (`Compute2DCoords` → 2D graph),
-                     `molecule_from_file` (`.mol`/`.sdf`/`.pdb`), and
-                     `smiles_from_structure` (RWMol → canonical SMILES).
-                     Aromatic bonds are Kekulised so orders read as 1/2/3.
-                     Install with `pip install rdkit`; the app runs without
-                     it and the menu items say when it's needed.
+                     `molecule_from_file` (`.mol`/`.sdf`/`.pdb`),
+                     `smiles_from_structure` (RWMol → canonical SMILES), and
+                     the descriptor helpers `descriptors_from_structure` /
+                     `descriptors_from_smiles` (`rdkit.Chem.Descriptors` /
+                     `rdMolDescriptors`: MW, exact mass, logP, TPSA, HBD/HBA,
+                     rotatable bonds, rings, InChI/InChIKey). Aromatic bonds
+                     are Kekulised so orders read as 1/2/3. Install with
+                     `pip install rdkit`; the app runs without it and the
+                     menu items say when it's needed.
+  - `properties.py`— `compute(molecule)` → ordered `(label, value)` rows and
+                     `PropertiesDialog` (Molecule ▸ Properties…, Ctrl+I).
+                     Formula / molecular weight / atom counts come from the
+                     element data (`elements.weight`, standard atomic
+                     weights for all 118), so they always work; RDKit adds
+                     the rich descriptors. Crystals report a unit-cell
+                     composition.
   - `document.py`  — the `.kmol` JSON format (both the 3D `Molecule` incl.
                      crystal edges + view, and the 2D sketch) and PNG
                      export. `FORMAT_VERSION`.

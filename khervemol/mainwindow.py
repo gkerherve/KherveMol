@@ -121,6 +121,9 @@ class MainWindow(QMainWindow):
         self._act(m_mol, "Import structure file…" + smi, self.import_file)
         self._act(m_mol, "Copy SMILES of structure" + smi, self.copy_smiles)
         m_mol.addSeparator()
+        self._act(m_mol, "Properties…", self.show_properties, "Ctrl+I",
+                  "mdi.information-outline")
+        m_mol.addSeparator()
         for title, keys in library.CATEGORIES:
             if title == "Crystal structures":
                 continue
@@ -317,6 +320,10 @@ class MainWindow(QMainWindow):
                                          f"({mol.formula()})")
         except Exception as exc:                    # noqa: BLE001
             QMessageBox.warning(self, "Import failed", str(exc))
+
+    def show_properties(self):
+        from .properties import PropertiesDialog
+        PropertiesDialog(self.viewer.mol, self).exec_()
 
     def copy_smiles(self):
         if not self._need_rdkit():

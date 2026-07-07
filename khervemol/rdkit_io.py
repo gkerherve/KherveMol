@@ -163,13 +163,8 @@ def molecule_from_file(path, label=None):
                           bond=1.35, rscale=0.9)
 
 
-def smiles_from_structure(atoms, bonds):
-    """Best-effort canonical SMILES for a built (atoms, bonds) model.
-
-    Constructs an editable RDKit molecule, sanitises it and returns the
-    canonical SMILES, or None if RDKit can't make chemical sense of it."""
-    if not _RDKIT:
-        return None
+def _rwmol_from_structure(atoms, bonds):
+    """A sanitised RDKit mol from a built (atoms, bonds) model, or None."""
     try:
         rw = Chem.RWMol()
         for a in atoms:
@@ -180,6 +175,62 @@ def smiles_from_structure(atoms, bonds):
             rw.AddBond(int(i), int(j), bt.get(int(o), Chem.BondType.SINGLE))
         m = rw.GetMol()
         Chem.SanitizeMol(m)
-        return Chem.MolToSmiles(m)
+        return m
     except Exception:
         return None
+
+
+def smiles_from_structure(atoms, bonds):
+    """Best-effort canonical SMILES for a built (atoms, bonds) model, or
+    None if RDKit can't make chemical sense of it."""
+    if not _RDKIT:
+        return None
+    m = _rwmol_from_structure(atoms, bonds)
+    return Chem.MolToSmiles(m) if m is not None else None
+
+
+def _descriptors(m):
+    """Compute a labelled dict of descriptors for an RDKit mol *m*."""
+    from rdkit.Chem import Descriptors, rdMolDescriptors
+    out = {}
+
+    def _try(key, fn):
+        try:
+            out[key] = fn()
+        except Exception:                           # pragma: no cover
+            pass
+
+    _try("Formula", lambda: rdMolDescriptors.CalcMolFormula(m))
+    _try("MolWt", lambda: Descriptors.MolWt(m))
+    _try("ExactMW", lambda: Descriptors.ExactMolWt(m))
+    _try("HeavyAtoms", lambda: Descriptors.HeavyAtomCount(m))
+    _try("Heteroatoms", lambda: Descriptors.NumHeteroatoms(m))
+    _try("LogP", lambda: Descriptors.MolLogP(m))
+    _try("TPSA", lambda: Descriptors.TPSA(m))
+    _try("HBD", lambda: Descriptors.NumHDonors(m))
+    _try("HBA", lambda: Descriptors.NumHAcceptors(m))
+    _try("RotatableBonds", lambda: Descriptors.NumRotatableBonds(m))
+    _try("Rings", lambda: rdMolDescriptors.CalcNumRings(m))
+    _try("AromaticRings", lambda: rdMolDescriptors.CalcNumAromaticRings(m))
+    _try("FractionCSP3", lambda: Descriptors.FractionCSP3(m))
+    _try("SMILES", lambda: Chem.MolToSmiles(m))
+    _try("InChI", lambda: Chem.MolToInchi(m))
+    _try("InChIKey", lambda: Chem.InchiToInchiKey(Chem.MolToInchi(m)))
+    return out
+
+
+def descriptors_from_structure(atoms, bonds):
+    """RDKit descriptor dict for a built model, or None if unavailable /
+    not interpretable (e.g. a crystal lattice)."""
+    if not _RDKIT:
+        return None
+    m = _rwmol_from_structure(atoms, bonds)
+    return _descriptors(m) if m is not None else None
+
+
+def descriptors_from_smiles(smiles):
+    """RDKit descriptor dict for a SMILES string, or None."""
+    if not _RDKIT:
+        return None
+    m = Chem.MolFromSmiles(smiles)
+    return _descriptors(m) if m is not None else None

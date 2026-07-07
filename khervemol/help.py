@@ -78,6 +78,13 @@ nucleobases, functional groups…). Type in the search box to filter by
 name, pick an entry to preview it, then <b>Build in 3D</b>. The built-in
 models build with or without RDKit; the named compounds need RDKit.</p>
 
+<h3>Properties</h3>
+<p><b>Molecule ▸ Properties…</b> (Ctrl+I) shows the current molecule's
+formula, molecular weight and atom counts — these always work. With
+<b>RDKit</b> installed it adds exact mass, LogP, TPSA, H-bond donors and
+acceptors, rotatable bonds, ring counts, the canonical SMILES and the
+InChI / InChIKey. Crystals are reported as a unit-cell composition.</p>
+
 <h3>AI Chat</h3>
 <p>The <b>robot</b> button on the toolbar (or <i>View ▸ AI Chat</i>) opens
 an assistant that answers chemistry questions and can draw molecules. Click

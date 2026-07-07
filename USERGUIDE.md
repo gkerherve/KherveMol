@@ -63,6 +63,15 @@ entry to preview it, then **Build in 3D** to load it into the 3D view (and
 2D sketch). The built-in models build with or without RDKit; the named
 compounds are built from SMILES via RDKit.
 
+## Properties
+
+**Molecule ▸ Properties…** (Ctrl+I) opens a table of the current molecule's
+properties. Formula, molecular weight and atom counts always work. With
+RDKit installed it adds exact mass, LogP, TPSA, H-bond donors/acceptors,
+rotatable bonds, ring counts, canonical SMILES, and InChI / InChIKey.
+Crystals are shown as a unit-cell composition (molecular descriptors don't
+apply to a periodic lattice).
+
 ## AI Chat
 
 The **robot** button on the toolbar (or **View ▸ AI Chat**) opens an
