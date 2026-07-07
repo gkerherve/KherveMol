@@ -172,9 +172,10 @@ and extend the round-trip tests in `tests/test_document.py`.
 
 ## Optional RDKit integration
 
-`rdkit_io.py` is imported behind a `try/except`; **never** import `rdkit`
-at module top-level elsewhere or add it to `requirements.txt` as a hard
-dependency — the app must run without it. New RDKit-backed features go in
+`rdkit` is listed in `requirements.txt` so the standard install includes
+it, **but the app must still run without it**: `rdkit_io.py` imports
+`rdkit` behind a `try/except` and exposes `available()`. Never import
+`rdkit` at module top-level anywhere else. New RDKit-backed features go in
 `rdkit_io.py` (guarded), get a menu item gated on `rdkit_io.available()`,
 and a test marked `skipif(not rdkit_io.available())`.
 
