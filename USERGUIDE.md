@@ -8,9 +8,18 @@ Everything you build stays as ordinary vector geometry you can export.
 - **3D View** — an interactive ball-and-stick model. Atoms are lit CPK
   spheres; bonds are sticks (single / double / triple). Crystals are drawn
   as wireframe unit cells.
-- **2D Sketch** — a flat editor drawn in the *same* ball-and-stick style as
-  the 3D view. Loading or building a molecule mirrors it here automatically,
-  so both tabs always show the same structure; you can still draw freely.
+- **2D Sketch** — a proper *skeletal* structural formula (line bonds,
+  carbons as vertices, heteroatoms lettered, hydrogens implicit). Loading or
+  building a molecule mirrors it here automatically; you can also draw
+  freely.
+
+**How the tabs relate.** They are two views of the *same* molecule: 3D is
+ball-and-stick, 2D is a skeletal formula. Loading a molecule, building from
+SMILES/the Explorer, or editing atoms in 3D updates the 2D automatically.
+The reverse isn't automatic — a flat drawing has no 3D shape until it's
+computed — so after drawing/editing the 2D sketch, run **Structure ▸ Build
+3D from 2D sketch** (Ctrl+B, or right-click ▸ Build 3D) to regenerate the
+matching 3D model. Both views also have **right-click menus**.
 
 ## 3D View
 

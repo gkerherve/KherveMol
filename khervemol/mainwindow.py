@@ -12,7 +12,7 @@ import os
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (QAction, QActionGroup, QApplication, QDockWidget,
-                             QFileDialog, QInputDialog, QMainWindow,
+                             QFileDialog, QInputDialog, QMainWindow, QMenu,
                              QMessageBox, QScrollArea, QTabWidget, QTreeWidget,
                              QTreeWidgetItem)
 
@@ -40,7 +40,9 @@ class MainWindow(QMainWindow):
         self.viewer.structure_changed.connect(self._on_changed)
         self.viewer.structure_changed.connect(self._sync_sketch)
         self.viewer.view_changed.connect(self._on_changed)
+        self.viewer.context.connect(self._viewer_menu)
         self.sketch.changed.connect(self._on_changed)
+        self.sketch.context_requested.connect(self._sketch_menu)
 
         self._build_dock()
         self._build_ai_dock()
@@ -144,6 +146,8 @@ class MainWindow(QMainWindow):
 
         m_struct = mb.addMenu("&Structure")
         self._act(m_struct, "Flatten 3D → 2D sketch", self.flatten_to_2d)
+        self._act(m_struct, "Build 3D from 2D sketch", self.build_3d_from_sketch,
+                  "Ctrl+B")
         self._act(m_struct, "Clear 2D sketch", self.sketch.clear)
 
         m_view = mb.addMenu("&View")
@@ -222,19 +226,59 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"Loaded {library.label(key)}")
 
     def _sync_sketch(self):
-        """Mirror the current 3D molecule into the 2D sketch, projected at
-        the model's orientation, so the two tabs show the same structure."""
+        """Mirror the current 3D molecule into the 2D sketch as a proper
+        skeletal structure. Uses RDKit's clean 2D depiction when available;
+        otherwise flattens the 3D model (dropping explicit H for molecules)."""
         mol = self.viewer.mol
         if not mol.atoms:
             self.sketch.clear()
             return
-        proj = [model._proj(a[1], a[2], a[3], mol.az, mol.el)
-                for a in mol.atoms]
+        if not mol.crystal and rdkit_io.available():
+            smiles = rdkit_io.smiles_from_structure(mol.atoms, mol.bonds)
+            if smiles:
+                try:
+                    a2, b2 = rdkit_io.sketch_from_smiles(smiles)
+                    if a2:
+                        self.sketch.set_structure(a2, b2)
+                        return
+                except Exception:                   # noqa: BLE001
+                    pass
+        self.sketch.set_structure(*self._flatten_2d(mol))
+
+    def _flatten_2d(self, mol):
+        """Project the 3D model to a flat 2D graph (fallback depiction).
+        Molecules drop their explicit hydrogens for a skeletal look;
+        crystals keep every atom."""
+        drop_h = not mol.crystal
+        keep = [i for i, a in enumerate(mol.atoms)
+                if not (drop_h and a[0] == "H")]
+        remap = {old: new for new, old in enumerate(keep)}
         s = 46.0
-        atoms2d = [[mol.atoms[i][0], proj[i][0] * s, proj[i][1] * s]
-                   for i in range(len(mol.atoms))]
-        bonds2d = [[i, j, o] for i, j, o in mol.bonds]
-        self.sketch.set_structure(atoms2d, bonds2d)
+        atoms2d = []
+        for i in keep:
+            a = mol.atoms[i]
+            px, py, _d = model._proj(a[1], a[2], a[3], mol.az, mol.el)
+            atoms2d.append([a[0], px * s, py * s])
+        bonds2d = [[remap[i], remap[j], o] for i, j, o in mol.bonds
+                   if i in remap and j in remap]
+        return atoms2d, bonds2d
+
+    def build_3d_from_sketch(self):
+        """Turn the current 2D sketch into a 3D model (needs RDKit)."""
+        if not self.sketch.atoms:
+            self.statusBar().showMessage("The 2D sketch is empty.")
+            return
+        if not self._need_rdkit():
+            return
+        smiles = rdkit_io.smiles_from_structure(self.sketch.atoms,
+                                                self.sketch.bonds)
+        if not smiles:
+            QMessageBox.information(
+                self, "Build 3D",
+                "Could not read the 2D sketch as a valid molecule. Check "
+                "that the atoms and bonds make chemical sense.")
+            return
+        self.build_smiles(smiles)
 
     def _on_element_picked(self, el):
         self.sketch.element = el
@@ -324,6 +368,44 @@ class MainWindow(QMainWindow):
     def show_properties(self):
         from .properties import PropertiesDialog
         PropertiesDialog(self.viewer.mol, self).exec_()
+
+    # ------------------------------------------------------- context menus
+    def _viewer_menu(self, gpos):
+        from .viewer3d import STANDARD_VIEWS
+        m = QMenu(self)
+        views = m.addMenu("View from")
+        for title, az, el in STANDARD_VIEWS:
+            views.addAction(
+                title, lambda _=False, a=az, e=el: self.viewer._set_view(a, e))
+        m.addAction("Reset zoom", self.viewer.view.reset_zoom)
+        m.addAction("Toggle labels", self.viewer.labels_btn.toggle)
+        if self.viewer.editable and self.viewer.selected is not None:
+            m.addAction("Delete selected atom", self.viewer.delete_selected)
+        m.addSeparator()
+        m.addAction("Properties…", self.show_properties)
+        if rdkit_io.available():
+            m.addAction("Copy SMILES", self.copy_smiles)
+        m.addAction("Flatten to 2D sketch", self.flatten_to_2d)
+        m.addAction("Export PNG…", self.export_png)
+        m.exec_(gpos)
+
+    def _sketch_menu(self, gpos):
+        m = QMenu(self)
+        m.addAction("Build 3D from this sketch", self.build_3d_from_sketch)
+        m.addAction("Refresh 2D from 3D model", self._sync_sketch)
+        m.addSeparator()
+        tools = m.addMenu("Tool")
+        for key, label in (("draw", "Draw"), ("move", "Move"),
+                           ("atom", "Atom"), ("erase", "Erase")):
+            act = tools.addAction(
+                label, lambda _=False, k=key: self.sketch.set_tool(k))
+            act.setCheckable(True)
+            act.setChecked(self.sketch.tool == key)
+        m.addAction("Toggle all labels", self.sketch.labels_btn.toggle)
+        m.addAction("Clear sketch", self.sketch.clear)
+        m.addSeparator()
+        m.addAction("Export PNG…", self.export_png)
+        m.exec_(gpos)
 
     def copy_smiles(self):
         if not self._need_rdkit():

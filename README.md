@@ -24,9 +24,12 @@ OpenGL), so it runs with just PyQt5 and qtawesome.
   hydrocarbons, polymer repeat units, and crystal unit cells
   (simple cubic, BCC, FCC, HCP, diamond, NaCl, CsCl) drawn as wireframe
   cells.
-- **2D structure sketcher** — draw flat line formulae: drag to bond, click
-  a bond to cycle its order, re-label or erase atoms. Flatten any 3D model
-  into the sketch with one command.
+- **2D structure sketcher** — proper skeletal formulae (line bonds,
+  lettered heteroatoms, implicit H). Loading/building mirrors the 3D model
+  into it automatically; **Build 3D from 2D sketch** (Ctrl+B) goes the other
+  way. Right-click menus in both views.
+- **300+ named compounds** in the Explorer — drugs, amino acids, sugars,
+  terpenes, steroids, monomers, plus whole homologous series.
 - **Full periodic table** — all 118 elements, CPK-coloured, as a dockable
   element picker.
 - **Molecule Explorer** — a searchable browser of the built-in models plus

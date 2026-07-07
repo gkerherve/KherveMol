@@ -83,29 +83,36 @@ module and import.
                      slider, labels toggle, Add-atom palette + bond-order
                      combo + delete. Crystals are rotatable/zoomable but
                      not atom-editable (`editable` = not crystal).
-  - `editor2d.py`  — `Editor2D`: the flat 2D sketcher, drawn in the **same
-                     ball-and-stick style as the 3D view** (lit CPK spheres
-                     via `model.atom_specs` + grey sticks via
-                     `model.bond_specs`, through `render.spec_to_item`), so
-                     the two tabs read the same. Inner `_Canvas` holds a 2D
-                     graph (atoms `[el,x,y]`, bonds `[i,j,order]`) with
-                     Draw / Move / Atom / Erase tools; Draw drags atom→atom
+  - `editor2d.py`  — `Editor2D`: the 2D sketcher, drawn as a **proper
+                     skeletal formula** (`_draw_bond`/`_draw_label`: thin
+                     bond lines with double/triple parallels, carbons as
+                     implicit vertices, heteroatoms as CPK-lettered labels
+                     with a white halo; hydrogens implicit unless "All
+                     labels"). Inner `_Canvas` holds a 2D graph (atoms
+                     `[el,x,y]`, bonds `[i,j,order]`) with Draw / Move /
+                     Atom / Erase tools (`set_tool`); Draw drags atom→atom
                      (bond) or atom→empty (new bonded atom), clicking a bond
-                     cycles its order. Element symbols are hidden by default
-                     (like the 3D view); "All labels" shows them. `image()`
-                     rasterises for export. `MainWindow._sync_sketch`
-                     projects the current 3D `Molecule` into it on every
-                     load / build / 3D structure edit.
+                     cycles order. Right-click emits `context_requested`.
+                     `image()` rasterises for export.
+                     `MainWindow._sync_sketch` mirrors the 3D `Molecule`
+                     into it on load / build / 3D edit — via RDKit's clean
+                     `Compute2DCoords` depiction when available, else
+                     `_flatten_2d` (project + drop explicit H). The reverse
+                     is on demand: `build_3d_from_sketch` (Ctrl+B / context
+                     menu) turns the sketch graph → SMILES → 3D.
   - `periodic.py`  — `PeriodicPicker`: the **full** periodic-table grid
                      (all 118 elements, atomic number + symbol per cell,
                      CPK-coloured, f-block below) built from
                      `elements.table_cells()`. Sits in a full-width bottom
                      dock (inside a `QScrollArea`); sets the active drawing
                      element and emits `picked(symbol)`.
-  - `catalog.py`   — a curated list of ~120 named compounds `(category,
-                     name, SMILES)` — solvents, hydrocarbons, aromatics,
-                     functional groups, acids, amino acids, sugars,
-                     nucleobases, drugs, gases. `grouped()`/`all_entries()`/
+  - `catalog.py`   — **300+** named compounds `(category, name, SMILES)`:
+                     `_CURATED` families (solvents, aromatics, heterocycles,
+                     pharmaceuticals, vitamins, hormones, steroids, terpenes,
+                     fatty acids, monomers, reagents, agrochemicals…) plus
+                     `_series()` generated homologous series (alkanes/enes/
+                     ynes/ols/acids/amines/aldehydes/cycloalkanes — always
+                     valid SMILES). `grouped()`/`all_entries()`/
                      `categories()`. Built into 3D/2D via `rdkit_io`.
   - `explorer.py`  — `MoleculeExplorer(QDialog)`: a searchable browser
                      (search box + category tree) with a live preview pane.

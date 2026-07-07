@@ -50,9 +50,19 @@ def test_mainwindow_loads_and_syncs_2d(qapp):
     w = MainWindow()
     w.load_model("benzene")
     assert w.viewer.mol.name == "benzene"
-    # loading a 3D model auto-mirrors it into the 2D sketch
-    assert len(w.sketch.atoms) == len(w.viewer.mol.atoms)
-    assert w.sketch.bonds == [list(b) for b in w.viewer.mol.bonds]
+    # loading a 3D model auto-mirrors it into the 2D sketch as a skeletal
+    # structure — heavy atoms only (hydrogens implicit)
+    heavy = sum(1 for a in w.viewer.mol.atoms if a[0] != "H")
+    assert len(w.sketch.atoms) == heavy
+    assert all(a[0] != "H" for a in w.sketch.atoms)
+    assert w.sketch.bonds
+
+
+def test_sketch_tool_switch(qapp):
+    from khervemol.editor2d import Editor2D
+    e = Editor2D()
+    e.set_tool("erase")
+    assert e.tool == "erase"
 
 
 def test_perovskite_and_new_crystals(qapp):

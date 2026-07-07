@@ -117,7 +117,12 @@ class _View(QGraphicsView):
                 return int(data)
         return None
 
+    def contextMenuEvent(self, event):
+        self._o.context.emit(event.globalPos())
+
     def mousePressEvent(self, event):
+        if event.button() != Qt.LeftButton:
+            return
         self._press = event.pos()
         self._press_atom = self._atom_at(event.pos())
         self._mode = None
@@ -172,6 +177,7 @@ class Viewer3D(QWidget):
 
     structure_changed = pyqtSignal()        # atoms/bonds edited
     view_changed = pyqtSignal()             # orientation/bond-length changed
+    context = pyqtSignal(object)            # global QPoint of a right-click
 
     def __init__(self, parent=None):
         super().__init__(parent)

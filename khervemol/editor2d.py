@@ -11,8 +11,11 @@ index pairs with an order. Tools:
 * **Erase**  — click an atom (removes it + its bonds) or a bond.
 
 Bond order cycles single → double → triple by clicking an existing bond
-with the Draw tool. Atoms are drawn as CPK-coloured discs with element
-labels (carbons as small vertices unless labels are forced on).
+with the Draw tool. It renders as a proper **skeletal formula**: thin bond
+lines (double/triple as parallels), carbons as implicit vertices and
+heteroatoms as CPK-coloured element labels; hydrogens are implicit unless
+"All labels" is on. Right-click for a context menu (Build 3D from sketch,
+tools, export…).
 
 Copyright (C) 2026 Gwilherm Kerherve
 
@@ -30,12 +33,13 @@ from PyQt5.QtWidgets import (QButtonGroup, QComboBox, QGraphicsScene,
                              QGraphicsView, QHBoxLayout, QLabel, QPushButton,
                              QToolButton, QVBoxLayout, QWidget)
 
-from . import elements, model, render
+from . import elements
 
-_HIT = 16.0             # px pick radius for atoms
+_HIT = 15.0             # px pick radius for atoms
 _BOND_LEN = 46.0        # default new-bond length
-_ATOM_BASE = 24.0       # atom sphere radius = elements.radius(el) * this
-_BOND_W = 7.0           # stick width, matching the 3D ball-and-stick look
+_BOND_LW = 2.3          # skeletal bond line width
+_MULTI_GAP = 4.5        # perpendicular offset between double/triple lines
+_LABEL_R = 10.0         # halo radius behind a drawn atom label
 
 
 class _Canvas(QGraphicsView):
@@ -60,11 +64,10 @@ class _Canvas(QGraphicsView):
 
     # ----------------------------------------------------------- geometry
     def _atom_at(self, sp):
-        best, bd = None, 1e9
+        best, bd = None, _HIT
         for i, a in enumerate(self._o.atoms):
-            reach = elements.radius(a[0]) * _ATOM_BASE + 4
             d = math.hypot(a[1] - sp.x(), a[2] - sp.y())
-            if d <= reach and d < bd:
+            if d < bd:
                 best, bd = i, d
         return best
 
@@ -78,7 +81,12 @@ class _Canvas(QGraphicsView):
         return best
 
     # -------------------------------------------------------------- events
+    def contextMenuEvent(self, event):
+        self._o.context_requested.emit(event.globalPos())
+
     def mousePressEvent(self, event):
+        if event.button() != Qt.LeftButton:
+            return
         sp = self.mapToScene(event.pos())
         tool = self._o.tool
         ai = self._atom_at(sp)
@@ -163,35 +171,74 @@ class _Canvas(QGraphicsView):
             self.changed.emit()
 
     # ------------------------------------------------------------- drawing
+    def _degree(self, idx):
+        return sum(1 for i, j, _o in self._o.bonds if idx in (i, j))
+
+    def _labeled(self, idx, show_all):
+        """Whether atom *idx* is drawn as a text label (vs an implicit
+        vertex). Heteroatoms always; carbons/H only if forced or isolated."""
+        el = self._o.atoms[idx][0]
+        if show_all:
+            return True
+        if el in ("C", "H"):
+            return self._degree(idx) == 0
+        return True
+
     def redraw(self):
-        """Draw the graph as ball-and-stick — the same lit CPK spheres and
-        grey sticks as the 3D view, so the two tabs read the same."""
+        """Draw the graph as a proper 2D skeletal formula: thin bond lines
+        (double/triple as parallels), carbons as implicit vertices and
+        heteroatoms as CPK-coloured element labels. Hydrogens are hidden
+        (skeletal convention) unless 'All labels' is on."""
         sc = self.scene()
         sc.clear()
         self._preview = None
         atoms, bonds = self._o.atoms, self._o.bonds
-        for i, j, order in bonds:
-            a, b = atoms[i], atoms[j]
-            for spec in model.bond_specs((a[1], a[2]), (b[1], b[2]), order,
-                                         width=_BOND_W):
-                item = render.spec_to_item(spec)
-                item.setZValue(1)
-                sc.addItem(item)
         show_all = self._o.show_labels
-        for el, x, y in atoms:
-            r = elements.radius(el) * _ATOM_BASE
-            for spec in model.atom_specs(x, y, r, el):
-                item = render.spec_to_item(spec)
-                item.setZValue(5)
-                sc.addItem(item)
-            if show_all:
-                txt = sc.addSimpleText(el)
-                txt.setFont(QFont("Segoe UI", max(7, int(r * 0.7)),
-                                  QFont.Bold))
-                txt.setBrush(QColor(elements.text_color(el)))
-                br = txt.boundingRect()
-                txt.setPos(x - br.width() / 2.0, y - br.height() / 2.0)
-                txt.setZValue(6)
+
+        pen = QPen(QColor("#1b1b1b"), _BOND_LW)
+        pen.setCapStyle(Qt.RoundCap)
+        for i, j, order in bonds:
+            if not show_all and (atoms[i][0] == "H" or atoms[j][0] == "H"):
+                continue                       # hide bonds to implicit H
+            a, b = atoms[i], atoms[j]
+            gi = _LABEL_R + 3 if self._labeled(i, show_all) else 0.0
+            gj = _LABEL_R + 3 if self._labeled(j, show_all) else 0.0
+            self._draw_bond(a[1], a[2], b[1], b[2], order, gi, gj, pen)
+
+        for idx, (el, x, y) in enumerate(atoms):
+            if not show_all and el == "H" and self._degree(idx) > 0:
+                continue
+            if self._labeled(idx, show_all):
+                self._draw_label(el, x, y)
+
+    def _draw_bond(self, x1, y1, x2, y2, order, gi, gj, pen):
+        dx, dy = x2 - x1, y2 - y1
+        length = math.hypot(dx, dy) or 1.0
+        ux, uy = dx / length, dy / length
+        px, py = -uy, ux                       # unit perpendicular
+        sx, sy = x1 + ux * gi, y1 + uy * gi    # shortened at labelled ends
+        ex, ey = x2 - ux * gj, y2 - uy * gj
+        offs = {1: [0.0], 2: [-1.0, 1.0], 3: [-1.0, 0.0, 1.0]}.get(order, [0.0])
+        for o in offs:
+            ox, oy = px * o * _MULTI_GAP, py * o * _MULTI_GAP
+            sc = self.scene()
+            sc.addLine(QLineF(sx + ox, sy + oy, ex + ox, ey + oy), pen)
+
+    def _draw_label(self, el, x, y):
+        sc = self.scene()
+        color = QColor(elements.color(el))
+        # opaque halo so bond lines don't run through the letter
+        halo = sc.addEllipse(QRectF(x - _LABEL_R, y - _LABEL_R,
+                                    2 * _LABEL_R, 2 * _LABEL_R),
+                             QPen(Qt.NoPen), QColor("#ffffff"))
+        halo.setZValue(5)
+        txt = sc.addSimpleText(el)
+        txt.setFont(QFont("Segoe UI", 12, QFont.Bold))
+        ink = color if color.lightnessF() < 0.75 else color.darker(160)
+        txt.setBrush(ink)
+        br = txt.boundingRect()
+        txt.setPos(x - br.width() / 2.0, y - br.height() / 2.0)
+        txt.setZValue(6)
 
     def wheelEvent(self, event):
         factor = 1.15 if event.angleDelta().y() > 0 else 1 / 1.15
@@ -211,6 +258,7 @@ class Editor2D(QWidget):
     """2D structure sketcher widget."""
 
     changed = pyqtSignal()
+    context_requested = pyqtSignal(object)      # global QPoint of right-click
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -264,6 +312,12 @@ class Editor2D(QWidget):
         row.addWidget(clear)
         row.addStretch(1)
         return row
+
+    def set_tool(self, key):
+        """Set the active tool and sync the toolbar button state."""
+        self.tool = key
+        for btn in self._tool_group.buttons():
+            btn.setChecked(btn.text().lower() == key)
 
     def _toggle_labels(self, on):
         self.show_labels = on

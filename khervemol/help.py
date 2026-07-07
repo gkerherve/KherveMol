@@ -26,10 +26,29 @@ Everything you build stays as ordinary vector geometry you can export.</p>
 <li><b>3D View</b> — an interactive ball-and-stick model. Atoms are lit
 CPK spheres; bonds are sticks (single / double / triple). Crystals are
 drawn as wireframe unit cells.</li>
-<li><b>2D Sketch</b> — a flat editor drawn in the <i>same</i> ball-and-stick
-style as the 3D view. Loading or building a molecule mirrors it here
-automatically, so both tabs always show the same structure.</li>
+<li><b>2D Sketch</b> — a proper <i>skeletal</i> structural formula (line
+bonds, carbons as vertices, heteroatoms lettered, hydrogens implicit).
+Loading or building a molecule mirrors it here automatically.</li>
 </ul>
+
+<h3>How the 2D and 3D tabs relate</h3>
+<ul>
+<li>They are two <b>views of the same molecule</b> in different styles: 3D
+is ball-and-stick, 2D is a skeletal formula.</li>
+<li>Loading a molecule, building from SMILES/the Explorer, or editing atoms
+in 3D <b>updates the 2D sketch automatically</b>.</li>
+<li>The 2D → 3D direction is <b>not</b> automatic (a flat drawing has no 3D
+shape until it's computed). When you've drawn or edited the 2D sketch, use
+<b>Structure ▸ Build 3D from 2D sketch</b> (Ctrl+B, or right-click ▸ Build
+3D) to generate the matching 3D model. That's why the 3D can look
+different until you run it.</li>
+</ul>
+
+<h3>Right-click menus</h3>
+<p>Right-click the <b>3D view</b> for standard views, reset zoom, labels,
+delete atom, Properties, Copy SMILES, flatten to 2D and export. Right-click
+the <b>2D sketch</b> to build 3D from it, switch tools, toggle labels, clear
+or export.</p>
 
 <h3>3D View</h3>
 <ul>
