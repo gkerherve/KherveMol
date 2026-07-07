@@ -8,7 +8,9 @@ Everything you build stays as ordinary vector geometry you can export.
 - **3D View** — an interactive ball-and-stick model. Atoms are lit CPK
   spheres; bonds are sticks (single / double / triple). Crystals are drawn
   as wireframe unit cells.
-- **2D Sketch** — a flat skeletal editor for line formulae.
+- **2D Sketch** — a flat editor drawn in the *same* ball-and-stick style as
+  the 3D view. Loading or building a molecule mirrors it here automatically,
+  so both tabs always show the same structure; you can still draw freely.
 
 ## 3D View
 
@@ -44,7 +46,7 @@ atom-editable.
 - The **Molecule** and **Crystal** menus — and the library tree on the
   left — load 30+ ready-made structures: simple molecules, alcohols &
   acids, hydrocarbons, polymers, and crystal unit cells (simple cubic,
-  BCC, FCC, HCP, diamond, NaCl, CsCl).
+  BCC, FCC, HCP, diamond, NaCl, CsCl, zinc blende, fluorite, perovskite).
 - The **periodic-table dock** along the bottom shows the whole table (all
   118 elements, CPK-coloured with atomic numbers). Click one to set the
   active drawing element; the header shows its name, atomic number and

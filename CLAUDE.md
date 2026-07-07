@@ -66,9 +66,10 @@ module and import.
                      in a `Molecule`. 30+ entries in `CATEGORIES`: simple
                      molecules, alcohols & acids, hydrocarbons, polymers
                      (zig-zag backbone), and crystal unit cells (simple
-                     cubic / BCC / FCC / HCP / diamond / NaCl / CsCl, drawn
-                     as wireframe cells). `is_crystal`/`default_bond`/
-                     `label`/`names`.
+                     cubic / BCC / FCC / HCP / diamond / NaCl / CsCl / zinc
+                     blende / fluorite / perovskite, drawn as wireframe
+                     cells; perovskite/zinc-blende include their internal
+                     bonds). `is_crystal`/`default_bond`/`label`/`names`.
   - `render.py`    — shape-spec → `QGraphicsItem` (`spec_to_item`,
                      `add_specs`) with the sun/linear/radial gradient
                      brushes, and `render_image(specs, w, h)` which
@@ -82,12 +83,19 @@ module and import.
                      slider, labels toggle, Add-atom palette + bond-order
                      combo + delete. Crystals are rotatable/zoomable but
                      not atom-editable (`editable` = not crystal).
-  - `editor2d.py`  — `Editor2D`: the flat 2D skeletal sketcher. Inner
-                     `_Canvas(QGraphicsView)` holds a 2D graph (atoms
-                     `[el,x,y]`, bonds `[i,j,order]`) with Draw / Move /
-                     Atom / Erase tools; Draw drags atom→atom (bond) or
-                     atom→empty (new bonded atom), clicking a bond cycles
-                     its order. `image()` rasterises for export.
+  - `editor2d.py`  — `Editor2D`: the flat 2D sketcher, drawn in the **same
+                     ball-and-stick style as the 3D view** (lit CPK spheres
+                     via `model.atom_specs` + grey sticks via
+                     `model.bond_specs`, through `render.spec_to_item`), so
+                     the two tabs read the same. Inner `_Canvas` holds a 2D
+                     graph (atoms `[el,x,y]`, bonds `[i,j,order]`) with
+                     Draw / Move / Atom / Erase tools; Draw drags atom→atom
+                     (bond) or atom→empty (new bonded atom), clicking a bond
+                     cycles its order. Element symbols are hidden by default
+                     (like the 3D view); "All labels" shows them. `image()`
+                     rasterises for export. `MainWindow._sync_sketch`
+                     projects the current 3D `Molecule` into it on every
+                     load / build / 3D structure edit.
   - `periodic.py`  — `PeriodicPicker`: the **full** periodic-table grid
                      (all 118 elements, atomic number + symbol per cell,
                      CPK-coloured, f-block below) built from

@@ -37,6 +37,7 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.tabs)
 
         self.viewer.structure_changed.connect(self._on_changed)
+        self.viewer.structure_changed.connect(self._sync_sketch)
         self.viewer.view_changed.connect(self._on_changed)
         self.sketch.changed.connect(self._on_changed)
 
@@ -46,6 +47,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Ready")
 
         self.viewer.set_molecule(library.make("ethanol"))
+        self._sync_sketch()
         self._retitle()
         self.resize(1160, 780)
 
@@ -197,19 +199,17 @@ class MainWindow(QMainWindow):
 
     def load_model(self, key):
         self.viewer.set_molecule(library.make(key))
+        self._sync_sketch()
         self.tabs.setCurrentIndex(0)
         self._retitle()
         self.statusBar().showMessage(f"Loaded {library.label(key)}")
 
-    def _on_element_picked(self, el):
-        self.sketch.element = el
-        idx = self.sketch.el_combo.findText(el)
-        if idx >= 0:
-            self.sketch.el_combo.setCurrentIndex(idx)
-
-    def flatten_to_2d(self):
+    def _sync_sketch(self):
+        """Mirror the current 3D molecule into the 2D sketch, projected at
+        the model's orientation, so the two tabs show the same structure."""
         mol = self.viewer.mol
         if not mol.atoms:
+            self.sketch.clear()
             return
         proj = [model._proj(a[1], a[2], a[3], mol.az, mol.el)
                 for a in mol.atoms]
@@ -218,8 +218,20 @@ class MainWindow(QMainWindow):
                    for i in range(len(mol.atoms))]
         bonds2d = [[i, j, o] for i, j, o in mol.bonds]
         self.sketch.set_structure(atoms2d, bonds2d)
+
+    def _on_element_picked(self, el):
+        self.sketch.element = el
+        idx = self.sketch.el_combo.findText(el)
+        if idx >= 0:
+            self.sketch.el_combo.setCurrentIndex(idx)
+
+    def flatten_to_2d(self):
+        if not self.viewer.mol.atoms:
+            return
+        self._sync_sketch()
         self.tabs.setCurrentIndex(1)
-        self.statusBar().showMessage("Flattened 3D model into the 2D sketch")
+        self.statusBar().showMessage("Flattened 3D model into the 2D sketch "
+                                     "(re-run to match the current rotation)")
 
     def _set_theme(self, name):
         style.apply_style(QApplication.instance(), name)
@@ -265,12 +277,8 @@ class MainWindow(QMainWindow):
         try:
             mol = rdkit_io.molecule_from_smiles(smiles, label=label)
             self.viewer.set_molecule(mol)
+            self._sync_sketch()
             self.tabs.setCurrentIndex(0)
-            try:
-                sa, sb = rdkit_io.sketch_from_smiles(smiles)
-                self.sketch.set_structure(sa, sb)
-            except Exception:                       # noqa: BLE001
-                pass
             self._retitle()
             shown = label or smiles
             self.statusBar().showMessage(f"Built {shown} with RDKit "
@@ -315,7 +323,7 @@ class MainWindow(QMainWindow):
         self._path = None
         self.viewer.set_molecule(model.Molecule(atoms=[["C", 0.0, 0.0, 0.0]],
                                                 name="custom", label="New molecule"))
-        self.sketch.clear()
+        self._sync_sketch()
         self._retitle()
 
     def open_dialog(self):

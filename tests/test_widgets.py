@@ -45,10 +45,19 @@ def test_editor2d_draw_and_bond(qapp):
     assert e.formula() == "CO"
 
 
-def test_mainwindow_loads(qapp):
+def test_mainwindow_loads_and_syncs_2d(qapp):
     from khervemol.mainwindow import MainWindow
     w = MainWindow()
     w.load_model("benzene")
     assert w.viewer.mol.name == "benzene"
-    w.flatten_to_2d()
+    # loading a 3D model auto-mirrors it into the 2D sketch
     assert len(w.sketch.atoms) == len(w.viewer.mol.atoms)
+    assert w.sketch.bonds == [list(b) for b in w.viewer.mol.bonds]
+
+
+def test_perovskite_and_new_crystals(qapp):
+    for key in ("perovskite", "zincblende", "fluorite"):
+        mol = library.make(key)
+        assert mol.crystal and mol.edges, key
+    # perovskite has the central TiO6 octahedron bonds
+    assert library.make("perovskite").bonds

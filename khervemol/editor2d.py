@@ -30,11 +30,12 @@ from PyQt5.QtWidgets import (QButtonGroup, QComboBox, QGraphicsScene,
                              QGraphicsView, QHBoxLayout, QLabel, QPushButton,
                              QToolButton, QVBoxLayout, QWidget)
 
-from . import elements
+from . import elements, model, render
 
 _HIT = 16.0             # px pick radius for atoms
 _BOND_LEN = 46.0        # default new-bond length
-_ATOM_R = 13.0          # drawn atom disc radius
+_ATOM_BASE = 24.0       # atom sphere radius = elements.radius(el) * this
+_BOND_W = 7.0           # stick width, matching the 3D ball-and-stick look
 
 
 class _Canvas(QGraphicsView):
@@ -59,10 +60,11 @@ class _Canvas(QGraphicsView):
 
     # ----------------------------------------------------------- geometry
     def _atom_at(self, sp):
-        best, bd = None, _HIT
+        best, bd = None, 1e9
         for i, a in enumerate(self._o.atoms):
+            reach = elements.radius(a[0]) * _ATOM_BASE + 4
             d = math.hypot(a[1] - sp.x(), a[2] - sp.y())
-            if d < bd:
+            if d <= reach and d < bd:
                 best, bd = i, d
         return best
 
@@ -162,52 +164,34 @@ class _Canvas(QGraphicsView):
 
     # ------------------------------------------------------------- drawing
     def redraw(self):
+        """Draw the graph as ball-and-stick — the same lit CPK spheres and
+        grey sticks as the 3D view, so the two tabs read the same."""
         sc = self.scene()
         sc.clear()
         self._preview = None
         atoms, bonds = self._o.atoms, self._o.bonds
-        bond_pen = QPen(QColor("#33373d"), 2.4)
-        bond_pen.setCapStyle(Qt.RoundCap)
         for i, j, order in bonds:
             a, b = atoms[i], atoms[j]
-            self._draw_bond(a[1], a[2], b[1], b[2], order, bond_pen)
+            for spec in model.bond_specs((a[1], a[2]), (b[1], b[2]), order,
+                                         width=_BOND_W):
+                item = render.spec_to_item(spec)
+                item.setZValue(1)
+                sc.addItem(item)
         show_all = self._o.show_labels
         for el, x, y in atoms:
-            self._draw_atom(el, x, y, show_all)
-
-    def _draw_bond(self, x1, y1, x2, y2, order, pen):
-        dx, dy = x2 - x1, y2 - y1
-        length = math.hypot(dx, dy) or 1.0
-        px, py = -dy / length * 3.4, dx / length * 3.4
-        if order == 1:
-            offs = [0.0]
-        elif order == 2:
-            offs = [-1.0, 1.0]
-        else:
-            offs = [-1.6, 0.0, 1.6]
-        for o in offs:
-            self.scene().addLine(QLineF(x1 + px * o, y1 + py * o,
-                                        x2 + px * o, y2 + py * o), pen)
-
-    def _draw_atom(self, el, x, y, show_all):
-        is_c = el == "C"
-        if is_c and not show_all:
-            dot = self.scene().addEllipse(QRectF(x - 2.5, y - 2.5, 5, 5),
-                                          QPen(Qt.NoPen), QColor("#33373d"))
-            dot.setZValue(5)
-            return
-        color = QColor(elements.color(el))
-        r = _ATOM_R
-        ell = self.scene().addEllipse(
-            QRectF(x - r, y - r, 2 * r, 2 * r),
-            QPen(color.darker(160), 1.5), color)
-        ell.setZValue(5)
-        txt = self.scene().addSimpleText(el)
-        txt.setFont(QFont("Segoe UI", 10, QFont.Bold))
-        txt.setBrush(QColor(elements.text_color(el)))
-        br = txt.boundingRect()
-        txt.setPos(x - br.width() / 2.0, y - br.height() / 2.0)
-        txt.setZValue(6)
+            r = elements.radius(el) * _ATOM_BASE
+            for spec in model.atom_specs(x, y, r, el):
+                item = render.spec_to_item(spec)
+                item.setZValue(5)
+                sc.addItem(item)
+            if show_all:
+                txt = sc.addSimpleText(el)
+                txt.setFont(QFont("Segoe UI", max(7, int(r * 0.7)),
+                                  QFont.Bold))
+                txt.setBrush(QColor(elements.text_color(el)))
+                br = txt.boundingRect()
+                txt.setPos(x - br.width() / 2.0, y - br.height() / 2.0)
+                txt.setZValue(6)
 
     def wheelEvent(self, event):
         factor = 1.15 if event.angleDelta().y() > 0 else 1 / 1.15

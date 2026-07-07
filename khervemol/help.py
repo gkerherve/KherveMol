@@ -26,7 +26,9 @@ Everything you build stays as ordinary vector geometry you can export.</p>
 <li><b>3D View</b> — an interactive ball-and-stick model. Atoms are lit
 CPK spheres; bonds are sticks (single / double / triple). Crystals are
 drawn as wireframe unit cells.</li>
-<li><b>2D Sketch</b> — a flat skeletal editor for line formulae.</li>
+<li><b>2D Sketch</b> — a flat editor drawn in the <i>same</i> ball-and-stick
+style as the 3D view. Loading or building a molecule mirrors it here
+automatically, so both tabs always show the same structure.</li>
 </ul>
 
 <h3>3D View</h3>
@@ -46,6 +48,8 @@ order (single/double/triple) first.</li>
 </ul>
 
 <h3>2D Sketch</h3>
+<p>The sketch mirrors the 3D model automatically, but you can also draw
+freely:</p>
 <ul>
 <li><b>Draw</b> — drag from an atom to another to bond them, or drag to
 empty space to spawn a new atom (of the active element) bonded to it.
@@ -60,7 +64,7 @@ the active element. <b>Erase</b> — click an atom or bond to remove it.</li>
 <li><b>Molecule</b> and <b>Crystal</b> menus (and the left library tree)
 load 30+ ready-made structures — small molecules, alcohols &amp; acids,
 hydrocarbons, polymers, and crystal unit cells (SC, BCC, FCC, HCP,
-diamond, NaCl, CsCl).</li>
+diamond, NaCl, CsCl, zinc blende, fluorite, perovskite).</li>
 <li>The <b>periodic-table dock</b> along the bottom shows the whole table
 (all 118 elements, CPK-coloured with atomic numbers); click one to make it
 the active drawing element. Toggle the dock from <i>View</i>.</li>
