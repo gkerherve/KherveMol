@@ -31,7 +31,11 @@ OpenGL), so it runs with just PyQt5 and qtawesome.
 - **300+ named compounds** in the Explorer — drugs, amino acids, sugars,
   terpenes, steroids, monomers, plus whole homologous series.
 - **Full periodic table** — all 118 elements, CPK-coloured, as a dockable
-  element picker.
+  picker; the active element can be bonded into the 3D structure (any
+  element, not just a fixed palette).
+- **Export SVG for KhervePaint** — molecules export to SVG that opens in
+  [KhervePaint](https://github.com/gkerherve/KhervePaint) as editable,
+  gradient-filled vector items.
 - **Molecule Explorer** — a searchable browser of the built-in models plus
   ~120 named compounds (drugs, amino acids, sugars, solvents, aromatics,
   nucleobases…), with a live preview and one-click build.

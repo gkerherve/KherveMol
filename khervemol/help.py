@@ -85,8 +85,12 @@ load 30+ ready-made structures — small molecules, alcohols &amp; acids,
 hydrocarbons, polymers, and crystal unit cells (SC, BCC, FCC, HCP,
 diamond, NaCl, CsCl, zinc blende, fluorite, perovskite).</li>
 <li>The <b>periodic-table dock</b> along the bottom shows the whole table
-(all 118 elements, CPK-coloured with atomic numbers); click one to make it
-the active drawing element. Toggle the dock from <i>View</i>.</li>
+(all 118 elements, CPK-coloured with atomic numbers). Click one to make it
+the <b>active element</b>. This drives both the 2D sketch and the 3D
+builder: in the 3D view, select an atom then click the <b>＋<i>El</i></b>
+button (or right-click ▸ <i>Add …</i>) to bond an atom of <i>any</i>
+element on — not just the ten quick buttons. Toggle the dock from
+<i>View</i>.</li>
 </ul>
 
 <h3>Molecule Explorer</h3>
@@ -136,6 +140,10 @@ needed.</p>
 <li><b>Save / Open</b> — the native <code>.kmol</code> format stores the
 3D model, its orientation, and the 2D sketch.</li>
 <li><b>Export PNG</b> — a flattened image of the current tab.</li>
+<li><b>Export SVG (KhervePaint)</b> (Ctrl+Shift+E) — writes an SVG that
+<b>opens in KhervePaint</b> as native, editable items: each atom becomes a
+gradient-filled ellipse and each bond a line. Exports the 3D ball-and-stick
+or the 2D skeletal formula, depending on the active tab.</li>
 </ul>
 """
 

@@ -16,8 +16,8 @@ from PyQt5.QtWidgets import (QAction, QActionGroup, QApplication, QDockWidget,
                              QMessageBox, QScrollArea, QTabWidget, QTreeWidget,
                              QTreeWidgetItem)
 
-from . import (__version__, document, help as help_mod, icons, library, model,
-               periodic, rdkit_io, style)
+from . import (__version__, document, elements, help as help_mod, icons,
+               library, model, periodic, rdkit_io, style, svgexport)
 from .ai_assistant import AiDock
 from .editor2d import Editor2D
 from .explorer import MoleculeExplorer
@@ -111,6 +111,8 @@ class MainWindow(QMainWindow):
         self._act(m_file, "Save As…", self.save_as, "Ctrl+Shift+S")
         m_file.addSeparator()
         self._act(m_file, "Export PNG…", self.export_png, "Ctrl+E", "mdi.image")
+        self._act(m_file, "Export SVG (KhervePaint)…", self.export_svg,
+                  "Ctrl+Shift+E", "mdi.vector-square")
         m_file.addSeparator()
         self._act(m_file, "Exit", self.close, "Ctrl+Q")
 
@@ -281,6 +283,9 @@ class MainWindow(QMainWindow):
         self.build_smiles(smiles)
 
     def _on_element_picked(self, el):
+        # The periodic-table dock sets the active element for BOTH the 2D
+        # sketch and the 3D builder's ＋ button / right-click "Add".
+        self.viewer.set_active_element(el)
         self.sketch.element = el
         idx = self.sketch.el_combo.findText(el)
         if idx >= 0:
@@ -379,14 +384,19 @@ class MainWindow(QMainWindow):
                 title, lambda _=False, a=az, e=el: self.viewer._set_view(a, e))
         m.addAction("Reset zoom", self.viewer.view.reset_zoom)
         m.addAction("Toggle labels", self.viewer.labels_btn.toggle)
-        if self.viewer.editable and self.viewer.selected is not None:
-            m.addAction("Delete selected atom", self.viewer.delete_selected)
+        if self.viewer.editable:
+            el = self.viewer.active_element
+            m.addAction(f"Add {el} ({elements.name(el)}) atom",
+                        self.viewer.add_active)
+            if self.viewer.selected is not None:
+                m.addAction("Delete selected atom", self.viewer.delete_selected)
         m.addSeparator()
         m.addAction("Properties…", self.show_properties)
         if rdkit_io.available():
             m.addAction("Copy SMILES", self.copy_smiles)
         m.addAction("Flatten to 2D sketch", self.flatten_to_2d)
         m.addAction("Export PNG…", self.export_png)
+        m.addAction("Export SVG (KhervePaint)…", self.export_svg)
         m.exec_(gpos)
 
     def _sketch_menu(self, gpos):
@@ -405,6 +415,7 @@ class MainWindow(QMainWindow):
         m.addAction("Clear sketch", self.sketch.clear)
         m.addSeparator()
         m.addAction("Export PNG…", self.export_png)
+        m.addAction("Export SVG (KhervePaint)…", self.export_svg)
         m.exec_(gpos)
 
     def copy_smiles(self):
@@ -486,6 +497,26 @@ class MainWindow(QMainWindow):
         else:
             self.sketch.image(1200, 1000).save(path, "PNG")
         self.statusBar().showMessage(f"Exported {os.path.basename(path)}")
+
+    def export_svg(self):
+        """Write a KhervePaint-compatible SVG of the current tab."""
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Export SVG (opens in KhervePaint)", "molecule.svg",
+            "SVG image (*.svg)")
+        if not path:
+            return
+        if not path.lower().endswith(".svg"):
+            path += ".svg"
+        if self.tabs.currentIndex() == 0:
+            specs = self.viewer.export_specs(1000, 800)
+        else:
+            specs = svgexport.sketch_specs(self.sketch.atoms,
+                                           self.sketch.bonds,
+                                           self.sketch.show_labels)
+        specs, w, h = svgexport.normalize(specs)
+        svgexport.save_specs(path, specs, w, h)
+        self.statusBar().showMessage(
+            f"Exported {os.path.basename(path)} — open it in KhervePaint")
 
     # -------------------------------------------------------------- helpers
     def show_guide(self):

@@ -58,8 +58,10 @@ atom-editable.
   BCC, FCC, HCP, diamond, NaCl, CsCl, zinc blende, fluorite, perovskite).
 - The **periodic-table dock** along the bottom shows the whole table (all
   118 elements, CPK-coloured with atomic numbers). Click one to set the
-  active drawing element; the header shows its name, atomic number and
-  valence. Toggle the dock (and the library) from the **View** menu.
+  **active element** (header shows its name, Z and valence). It drives both
+  tabs: in the 3D view, select an atom and click the **＋*El*** button (or
+  right-click ▸ *Add …*) to bond an atom of **any** element on — not just
+  the ten quick buttons. Toggle the dock from **View**.
 
 ## Molecule Explorer
 
@@ -133,6 +135,10 @@ needed.
   orientation and bond length, and the 2D sketch, so a document
   round-trips completely.
 - **Export PNG** — a flattened image of whichever tab is active.
+- **Export SVG (KhervePaint)** (Ctrl+Shift+E) — writes an SVG that opens in
+  **KhervePaint** as native, editable items (each atom a gradient-filled
+  ellipse, each bond a line). Exports the 3D ball-and-stick or the 2D
+  skeletal formula depending on the active tab.
 
 ## Keyboard shortcuts
 

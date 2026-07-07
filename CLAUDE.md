@@ -81,8 +81,13 @@ module and import.
                      wheel, drags an atom to bend a bond, clicks to select.
                      Surrounding controls: view-cube toolbar, bond-length
                      slider, labels toggle, Add-atom palette + bond-order
-                     combo + delete. Crystals are rotatable/zoomable but
-                     not atom-editable (`editable` = not crystal).
+                     combo + delete. A **＋active-element** button
+                     (`set_active_element`/`add_active`) bonds on *any*
+                     element chosen in the periodic-table dock (not just the
+                     10 quick buttons); also on the right-click menu. Emits
+                     `context` on right-click. Crystals are
+                     rotatable/zoomable but not atom-editable (`editable` =
+                     not crystal).
   - `editor2d.py`  — `Editor2D`: the 2D sketcher, drawn as a **proper
                      skeletal formula** (`_draw_bond`/`_draw_label`: thin
                      bond lines with double/triple parallels, carbons as
@@ -146,6 +151,17 @@ module and import.
   - `document.py`  — the `.kmol` JSON format (both the 3D `Molecule` incl.
                      crystal edges + view, and the 2D sketch) and PNG
                      export. `FORMAT_VERSION`.
+  - `svgexport.py` — **KhervePaint-compatible SVG** writer. `specs_to_svg`
+                     turns shape specs into KhervePaint's own SVG shape
+                     (spheres → `<ellipse>` with an `objectBoundingBox`
+                     radial "sun" gradient written light-first,
+                     `cx=0.35 cy=0.35 r=0.95 fx=0.25 fy=0.25`; bonds →
+                     `<line>`), so a molecule opens in KhervePaint as
+                     editable gradient-filled items (verified against
+                     `khervepaint.svgio.load_svg`). `sketch_specs` makes the
+                     2D skeletal line/label specs; `normalize` fits the
+                     viewBox. Wired to File ▸ Export SVG (Ctrl+Shift+E) and
+                     both context menus.
   - `mainwindow.py`— `MainWindow` shell: a `QTabWidget` (3D View / 2D
                      Sketch), a **left** dock (library tree) and a **bottom**
                      dock (full periodic table), both toggleable from View;

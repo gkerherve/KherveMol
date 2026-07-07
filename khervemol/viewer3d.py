@@ -255,6 +255,13 @@ class Viewer3D(QWidget):
             btn.clicked.connect(lambda _=False, e=el: self.add_element(e))
             row.addWidget(btn)
             self._palette_btns.append(btn)
+        # "add the active periodic-table element" — the whole table, not just
+        # the 10 quick buttons (the active element is set in the table dock).
+        self.add_active_btn = QPushButton("＋C")
+        self.add_active_btn.setFixedWidth(40)
+        self.add_active_btn.clicked.connect(self.add_active)
+        row.addWidget(self.add_active_btn)
+        self.set_active_element("C")
         row.addSpacing(8)
         row.addWidget(QLabel("Bond:"))
         self.order_combo = QComboBox()
@@ -281,10 +288,27 @@ class Viewer3D(QWidget):
             w.setEnabled(True)
         for btn in self._palette_btns:
             btn.setEnabled(editable)
+        self.add_active_btn.setEnabled(editable)
         self.order_combo.setEnabled(editable)
         self.del_btn.setEnabled(editable)
         self._update_status()
         self.view.rebuild()
+
+    def set_active_element(self, el):
+        """Set the element the ＋ button / right-click 'Add' adds (driven by
+        the periodic-table dock), so any element can be built, not just the
+        10 quick buttons."""
+        self.active_element = el
+        color = elements.color(el)
+        self.add_active_btn.setText(f"＋{el}")
+        self.add_active_btn.setStyleSheet(
+            f"background:{color}; color:{elements.text_color(el)}; "
+            "font-weight:bold; border:1px solid #666;")
+        self.add_active_btn.setToolTip(
+            f"Bond a {elements.name(el)} atom onto the selected atom")
+
+    def add_active(self):
+        self.add_element(self.active_element)
 
     @property
     def editable(self):
