@@ -63,6 +63,23 @@ entry to preview it, then **Build in 3D** to load it into the 3D view (and
 2D sketch). The built-in models build with or without RDKit; the named
 compounds are built from SMILES via RDKit.
 
+## AI Chat
+
+The **robot** button on the toolbar (or **View ▸ AI Chat**) opens an
+assistant that answers chemistry questions and can draw molecules for you.
+
+1. Click the **⚙** button and choose a provider (Anthropic/Claude, OpenAI,
+   Mistral, Ollama, or a local server), a model, and paste your API key.
+   (Ollama and a local server need no key.)
+2. Ask a question — *"what is aromaticity?"* — or request a structure —
+   *"draw aspirin"*, *"show me glucose"*. When the assistant suggests a
+   molecule it returns a SMILES that KherveMol renders into the 3D view and
+   2D sketch automatically (RDKit required for rendering).
+
+Requests run in the background, so a slow or failed reply never freezes the
+app; errors appear as a red line in the chat. Crystal cells aren't SMILES —
+the assistant will point you to the Crystal menu for those.
+
 ## SMILES & structure files (optional — RDKit)
 
 Install RDKit to unlock structure import — it has a native Python API and

@@ -136,6 +136,20 @@ module and import.
                      `flatten_to_2d`, and the RDKit actions (From SMILES…,
                      Import structure file…, Copy SMILES of structure — each
                      guarded by `rdkit_io.available()`).
+  - `ai_providers.py` — dependency-free (urllib) AI backend registry:
+                     Claude / ChatGPT / Mistral / Ollama / Local, each with
+                     `chat()` and `list_models()`; keys/base URLs read from
+                     QSettings by the dock. Ported from the family.
+  - `ai_assistant.py` — `AiDock`: the **AI Chat** panel (right dock, toggled
+                     from the toolbar robot / View ▸ AI Chat). A chemistry
+                     assistant — answers questions, and when asked to draw a
+                     molecule replies with a ``SMILES:`` line that
+                     `extract_smiles` pulls out and `MainWindow.build_smiles`
+                     renders into the 3D view + 2D sketch (RDKit-gated).
+                     **All network runs on a `_Worker(QThread)`** with
+                     done/failed signals, so a slow/failed request never
+                     blocks or crashes the UI — errors show as a red chat
+                     line. `AiSettingsDialog` sets provider/model/key.
   - `help.py`      — About dialog + in-app User Guide (`Help ▸ User
                      Guide`, F1). Keep the guide and `USERGUIDE.md` in sync
                      when features change.

@@ -32,6 +32,9 @@ OpenGL), so it runs with just PyQt5 and qtawesome.
 - **Molecule Explorer** — a searchable browser of the built-in models plus
   ~120 named compounds (drugs, amino acids, sugars, solvents, aromatics,
   nucleobases…), with a live preview and one-click build.
+- **AI Chat** — ask chemistry questions or say "draw caffeine"; the
+  assistant answers and renders the molecule. Works with Claude, ChatGPT,
+  Mistral, Ollama or a local server; all network runs off the UI thread.
 - **SMILES & file import (optional, via RDKit)** — type a SMILES string to
   embed a real 3D conformer, or open `.mol` / `.sdf` / `.pdb` files. Works
   headless, no Jupyter. `pip install rdkit` to enable.

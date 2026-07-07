@@ -78,6 +78,17 @@ nucleobases, functional groups…). Type in the search box to filter by
 name, pick an entry to preview it, then <b>Build in 3D</b>. The built-in
 models build with or without RDKit; the named compounds need RDKit.</p>
 
+<h3>AI Chat</h3>
+<p>The <b>robot</b> button on the toolbar (or <i>View ▸ AI Chat</i>) opens
+an assistant that answers chemistry questions and can draw molecules. Click
+the <b>⚙</b> to pick a provider (Claude, ChatGPT, Mistral, Ollama, or a
+local server), a model, and your API key. Then ask things like <i>"what is
+a hydrogen bond?"</i> or <i>"draw caffeine"</i> — when it suggests a
+molecule it returns a SMILES that KherveMol renders into the 3D view and 2D
+sketch automatically (RDKit needed for rendering). Requests run in the
+background, so a slow or failed reply never freezes the app — any error
+appears as a red line in the chat.</p>
+
 <h3>SMILES &amp; structure files (RDKit)</h3>
 <p>If <b>RDKit</b> is installed (<code>pip install rdkit</code>), the
 <b>Molecule</b> menu unlocks:</p>

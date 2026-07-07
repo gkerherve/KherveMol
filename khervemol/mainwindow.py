@@ -18,6 +18,7 @@ from PyQt5.QtWidgets import (QAction, QActionGroup, QApplication, QDockWidget,
 
 from . import (__version__, document, help as help_mod, icons, library, model,
                periodic, rdkit_io, style)
+from .ai_assistant import AiDock
 from .editor2d import Editor2D
 from .explorer import MoleculeExplorer
 from .viewer3d import Viewer3D
@@ -42,6 +43,7 @@ class MainWindow(QMainWindow):
         self.sketch.changed.connect(self._on_changed)
 
         self._build_dock()
+        self._build_ai_dock()
         self._build_menus()
         self._build_toolbar()
         self.statusBar().showMessage("Ready")
@@ -89,6 +91,11 @@ class MainWindow(QMainWindow):
         pt_dock.setWidget(scroll)
         self.addDockWidget(Qt.BottomDockWidgetArea, pt_dock)
         self._ptable_dock = pt_dock
+
+    def _build_ai_dock(self):
+        self.ai_dock = AiDock(self)
+        self.addDockWidget(Qt.RightDockWidgetArea, self.ai_dock)
+        self.ai_dock.hide()             # opened on demand from View / toolbar
 
     # --------------------------------------------------------------- menus
     def _build_menus(self):
@@ -151,6 +158,9 @@ class MainWindow(QMainWindow):
         m_view.addSeparator()
         m_view.addAction(self._library_dock.toggleViewAction())
         m_view.addAction(self._ptable_dock.toggleViewAction())
+        ai_toggle = self.ai_dock.toggleViewAction()
+        ai_toggle.setText("AI Chat")
+        m_view.addAction(ai_toggle)
 
         m_help = mb.addMenu("&Help")
         self._act(m_help, "User Guide", self.show_guide, "F1")
@@ -182,6 +192,10 @@ class MainWindow(QMainWindow):
         self._tb_act(tb, "Diamond", lambda: self.load_model("diamond"),
                      "mdi.diamond-stone")
         tb.addSeparator()
+        ai_toggle = self.ai_dock.toggleViewAction()
+        ai_toggle.setIcon(icons.icon("mdi.robot-outline"))
+        ai_toggle.setToolTip("AI Chat — ask chemistry questions, draw molecules")
+        tb.addAction(ai_toggle)
         self._tb_act(tb, "Guide", self.show_guide, "mdi.help-circle-outline")
 
     def _tb_act(self, tb, text, slot, icon_name):
