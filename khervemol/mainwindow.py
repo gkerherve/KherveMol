@@ -10,7 +10,7 @@ the Free Software Foundation, either version 3 of the License, or
 
 import os
 
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import QMimeData, Qt
 from PyQt5.QtWidgets import (QAction, QActionGroup, QApplication, QDockWidget,
                              QFileDialog, QInputDialog, QMainWindow, QMenu,
                              QMessageBox, QScrollArea, QTabWidget, QTreeWidget,
@@ -19,9 +19,24 @@ from PyQt5.QtWidgets import (QAction, QActionGroup, QApplication, QDockWidget,
 from . import (__version__, catalog, document, elements, help as help_mod,
                icons, library, model, periodic, rdkit_io, style, svgexport)
 from .ai_assistant import AiDock
-from .editor2d import Editor2D
+from .editor2d import _DND_MIME, Editor2D
 from .explorer import MoleculeExplorer
 from .viewer3d import Viewer3D
+
+
+class _LibraryTree(QTreeWidget):
+    """Tree whose leaves can be dragged onto the 2D canvas to drop that
+    compound in as a new molecule fragment."""
+
+    def mimeData(self, items):
+        md = QMimeData()
+        for it in items:
+            data = it.data(0, Qt.UserRole)
+            if data:
+                md.setData(_DND_MIME,
+                           f"{data[0]}|{data[1]}".encode("utf-8"))
+                break
+        return md
 
 
 class MainWindow(QMainWindow):
@@ -37,12 +52,18 @@ class MainWindow(QMainWindow):
         self.tabs.addTab(self.sketch, "2D Sketch")
         self.setCentralWidget(self.tabs)
 
+        # The 2D sketch is a real editor: once you edit/drop in it, it goes
+        # "dirty" and 3D edits stop overwriting it (until an explicit sync).
+        self._sketch_dirty = False
+        self._syncing = False
         self.viewer.structure_changed.connect(self._on_changed)
-        self.viewer.structure_changed.connect(self._sync_sketch)
+        self.viewer.structure_changed.connect(
+            lambda: self._sync_sketch(force=False))
         self.viewer.view_changed.connect(self._on_changed)
         self.viewer.context.connect(self._viewer_menu)
-        self.sketch.changed.connect(self._on_changed)
+        self.sketch.changed.connect(self._on_sketch_changed)
         self.sketch.context_requested.connect(self._sketch_menu)
+        self.sketch.molecule_dropped.connect(self._on_drop_molecule)
 
         self._build_dock()
         self._build_ai_dock()
@@ -51,7 +72,7 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Ready")
 
         self.viewer.set_molecule(library.make("ethanol"))
-        self._sync_sketch()
+        self._sync_sketch(force=True)
         self._retitle()
         self.resize(1160, 780)
 
@@ -60,8 +81,9 @@ class MainWindow(QMainWindow):
         # Left: the molecule / crystal library tree.
         lib_dock = QDockWidget("Library", self)
         lib_dock.setAllowedAreas(Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea)
-        self.tree = QTreeWidget()
+        self.tree = _LibraryTree()
         self.tree.setHeaderHidden(True)
+        self.tree.setDragEnabled(True)          # drag a compound to the 2D tab
         # Two clear sections. Built-in 3D models (build without RDKit),
         # sub-groups expanded:
         models_top = self._tree_header("Built-in 3D models")
@@ -261,15 +283,25 @@ class MainWindow(QMainWindow):
 
     def load_model(self, key):
         self.viewer.set_molecule(library.make(key))
-        self._sync_sketch()
+        self._sync_sketch(force=True)
         self.tabs.setCurrentIndex(0)
         self._retitle()
         self.statusBar().showMessage(f"Loaded {library.label(key)}")
 
-    def _sync_sketch(self):
+    def _sync_sketch(self, force=False):
         """Mirror the current 3D molecule into the 2D sketch as a proper
-        skeletal structure. Uses RDKit's clean 2D depiction when available;
-        otherwise flattens the 3D model (dropping explicit H for molecules)."""
+        skeletal structure. Skipped when the sketch has been edited by hand
+        (unless *force*), so multi-molecule work isn't clobbered."""
+        if self._sketch_dirty and not force:
+            return
+        self._syncing = True
+        try:
+            self._do_sync_sketch()
+        finally:
+            self._syncing = False
+            self._sketch_dirty = False
+
+    def _do_sync_sketch(self):
         mol = self.viewer.mol
         if not mol.atoms:
             self.sketch.clear()
@@ -285,6 +317,50 @@ class MainWindow(QMainWindow):
                 except Exception:                   # noqa: BLE001
                     pass
         self.sketch.set_structure(*self._flatten_2d(mol))
+
+    def _on_sketch_changed(self):
+        if not self._syncing:
+            self._sketch_dirty = True
+        self._retitle()
+
+    # ------------------------------------------------ drag-and-drop from library
+    def _compound_2d(self, kind, value):
+        """The 2D graph (atoms [el,x,y], bonds) for a library entry, or
+        None (crystal, or SMILES compound without RDKit)."""
+        if kind == "model":
+            mol = library.make(value)
+            if mol.crystal:
+                return None
+            if rdkit_io.available():
+                smi = rdkit_io.smiles_from_structure(mol.atoms, mol.bonds)
+                if smi:
+                    try:
+                        a2, b2 = rdkit_io.sketch_from_smiles(smi)
+                        if a2:
+                            return a2, b2
+                    except Exception:               # noqa: BLE001
+                        pass
+            return self._flatten_2d(mol)
+        if not rdkit_io.available():
+            return None
+        try:
+            a2, b2 = rdkit_io.sketch_from_smiles(value)
+            return (a2, b2) if a2 else None
+        except Exception:                           # noqa: BLE001
+            return None
+
+    def _on_drop_molecule(self, kind, value, x, y):
+        result = self._compound_2d(kind, value)
+        if result is None:
+            self.statusBar().showMessage(
+                "Can't place that in 2D (crystal, or install RDKit for "
+                "named compounds).")
+            return
+        self.sketch.add_fragment(result[0], result[1], x, y)
+        self.tabs.setCurrentIndex(1)
+        self.statusBar().showMessage(
+            "Dropped a molecule — Move it, or use Draw to bond it to "
+            "another; Erase a bond to split them.")
 
     def _flatten_2d(self, mol):
         """Project the 3D model to a flat 2D graph (fallback depiction).
@@ -333,7 +409,7 @@ class MainWindow(QMainWindow):
     def flatten_to_2d(self):
         if not self.viewer.mol.atoms:
             return
-        self._sync_sketch()
+        self._sync_sketch(force=True)
         self.tabs.setCurrentIndex(1)
         self.statusBar().showMessage("Flattened 3D model into the 2D sketch "
                                      "(re-run to match the current rotation)")
@@ -382,7 +458,7 @@ class MainWindow(QMainWindow):
         try:
             mol = rdkit_io.molecule_from_smiles(smiles, label=label)
             self.viewer.set_molecule(mol)
-            self._sync_sketch()
+            self._sync_sketch(force=True)
             self.tabs.setCurrentIndex(0)
             self._retitle()
             shown = label or smiles
@@ -476,7 +552,7 @@ class MainWindow(QMainWindow):
         self._path = None
         self.viewer.set_molecule(model.Molecule(atoms=[["C", 0.0, 0.0, 0.0]],
                                                 name="custom", label="New molecule"))
-        self._sync_sketch()
+        self._sync_sketch(force=True)
         self._retitle()
 
     def open_dialog(self):

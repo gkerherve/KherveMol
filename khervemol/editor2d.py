@@ -41,6 +41,9 @@ _BOND_LW = 2.3          # skeletal bond line width
 _MULTI_GAP = 4.5        # perpendicular offset between double/triple lines
 _LABEL_R = 10.0         # halo radius behind a drawn atom label
 
+#: MIME type for dragging a library compound onto the canvas ("kind|value").
+_DND_MIME = "application/x-khervemol-compound"
+
 
 class _Canvas(QGraphicsView):
     changed = pyqtSignal()
@@ -56,11 +59,27 @@ class _Canvas(QGraphicsView):
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.setDragMode(QGraphicsView.NoDrag)
+        self.setAcceptDrops(True)               # drop molecules from library
         self._press = None
         self._drag_from = None
         self._moving = None
+        self._move_comp = set()
+        self._move_last = None
         self._preview = None
         self.redraw()
+
+    # ---------------------------------------------------- connected fragment
+    def _component(self, idx):
+        """Indices of the atom fragment (connected component) of *idx*."""
+        comp, stack = {idx}, [idx]
+        while stack:
+            k = stack.pop()
+            for a, b, _o in self._o.bonds:
+                nxt = b if a == k else (a if b == k else None)
+                if nxt is not None and nxt not in comp:
+                    comp.add(nxt)
+                    stack.append(nxt)
+        return comp
 
     # ----------------------------------------------------------- geometry
     def _atom_at(self, sp):
@@ -92,7 +111,10 @@ class _Canvas(QGraphicsView):
         ai = self._atom_at(sp)
         self._press = sp
         if tool == "move":
+            # move the whole molecule (connected fragment) the atom is in
             self._moving = ai
+            self._move_comp = self._component(ai) if ai is not None else set()
+            self._move_last = sp
         elif tool == "atom":
             if ai is not None:
                 self._o.atoms[ai][0] = self._o.element
@@ -108,8 +130,12 @@ class _Canvas(QGraphicsView):
     def mouseMoveEvent(self, event):
         sp = self.mapToScene(event.pos())
         if self._moving is not None:
-            self._o.atoms[self._moving][1] = sp.x()
-            self._o.atoms[self._moving][2] = sp.y()
+            dx = sp.x() - self._move_last.x()
+            dy = sp.y() - self._move_last.y()
+            for i in self._move_comp:
+                self._o.atoms[i][1] += dx
+                self._o.atoms[i][2] += dy
+            self._move_last = sp
             self.redraw()
         elif self._drag_from is not None:
             self.redraw()
@@ -131,7 +157,7 @@ class _Canvas(QGraphicsView):
             if tgt is None and moved:
                 # only grow a new bonded atom if the anchor has a free bond
                 if self._free(src) >= 1:
-                    tgt = self._new_atom(sp)
+                    tgt = self._new_bonded_atom(src, sp)
                 else:
                     self._note(src)
             if tgt is not None and tgt != src:
@@ -148,6 +174,36 @@ class _Canvas(QGraphicsView):
     def _new_atom(self, sp):
         self._o.atoms.append([self._o.element, sp.x(), sp.y()])
         return len(self._o.atoms) - 1
+
+    def _new_bonded_atom(self, anchor, sp):
+        """Place a new atom a standard bond length from *anchor*, snapping
+        the angle to 30° steps so hand-drawn chains keep reasonable
+        (≈120°) geometry."""
+        a = self._o.atoms[anchor]
+        dx, dy = sp.x() - a[1], sp.y() - a[2]
+        ang = math.atan2(dy, dx) if (dx or dy) else 0.0
+        step = math.radians(30)
+        ang = round(ang / step) * step
+        x = a[1] + _BOND_LEN * math.cos(ang)
+        y = a[2] + _BOND_LEN * math.sin(ang)
+        self._o.atoms.append([self._o.element, x, y])
+        return len(self._o.atoms) - 1
+
+    # --------------------------------------------------- drag & drop molecules
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasFormat(_DND_MIME):
+            event.acceptProposedAction()
+
+    def dragMoveEvent(self, event):
+        if event.mimeData().hasFormat(_DND_MIME):
+            event.acceptProposedAction()
+
+    def dropEvent(self, event):
+        raw = bytes(event.mimeData().data(_DND_MIME)).decode("utf-8")
+        kind, _, value = raw.partition("|")
+        sp = self.mapToScene(event.pos())
+        self._o.molecule_dropped.emit(kind, value, sp.x(), sp.y())
+        event.acceptProposedAction()
 
     # --- valence: refuse chemically impossible bonds (like the 3D builder)
     def _used(self, idx):
@@ -291,6 +347,7 @@ class Editor2D(QWidget):
 
     changed = pyqtSignal()
     context_requested = pyqtSignal(object)      # global QPoint of right-click
+    molecule_dropped = pyqtSignal(str, str, float, float)   # kind,value,x,y
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -370,6 +427,24 @@ class Editor2D(QWidget):
         """Load a 2D graph: atoms [[el,x,y],...], bonds [[i,j,order],...]."""
         self.atoms = [list(a) for a in atoms]
         self.bonds = [list(b) for b in bonds]
+        self.canvas.redraw()
+        self._on_changed()
+
+    def add_fragment(self, atoms, bonds, cx, cy):
+        """Append another molecule (as a separate fragment) centred on
+        (cx, cy) — the drop target — without disturbing what's already
+        drawn. Its bonds are re-indexed onto the existing atom list."""
+        if not atoms:
+            return
+        xs = [a[1] for a in atoms]
+        ys = [a[2] for a in atoms]
+        ox = cx - (min(xs) + max(xs)) / 2.0
+        oy = cy - (min(ys) + max(ys)) / 2.0
+        base = len(self.atoms)
+        for el, x, y in atoms:
+            self.atoms.append([el, x + ox, y + oy])
+        for i, j, o in bonds:
+            self.bonds.append([base + i, base + j, o])
         self.canvas.redraw()
         self._on_changed()
 

@@ -96,12 +96,19 @@ module and import.
                      labels"). Inner `_Canvas` holds a 2D graph (atoms
                      `[el,x,y]`, bonds `[i,j,order]`) with Draw / Move /
                      Atom / Erase tools (`set_tool`); Draw drags atom→atom
-                     (bond) or atom→empty (new bonded atom), clicking a bond
-                     cycles order. **Enforces valence** like the 3D builder
+                     (bond) or atom→empty (new bonded atom via
+                     `_new_bonded_atom`, snapped to a fixed length + 30°
+                     angle for tidy geometry), clicking a bond cycles order.
+                     **Multi-molecule canvas**: Move drags a whole connected
+                     fragment (`_component`); Draw across fragments bonds
+                     them, Erase a bond splits them; `add_fragment` appends
+                     another molecule at a drop point; drops arrive via the
+                     `molecule_dropped` signal (canvas `dropEvent`, MIME
+                     `_DND_MIME`). **Enforces valence** like the 3D builder
                      (`_free`/`_bond_capacity`): refuses bonds / order
-                     increases that exceed an atom's valence, so impossible
-                     structures can't be drawn. Right-click emits
-                     `context_requested`. `image()` rasterises for export.
+                     increases that exceed an atom's valence. Right-click
+                     emits `context_requested`. `image()` rasterises for
+                     export.
                      `MainWindow._sync_sketch` mirrors the 3D `Molecule`
                      into it on load / build / 3D edit — via RDKit's clean
                      `Compute2DCoords` depiction when available, else
@@ -170,8 +177,14 @@ module and import.
                      built-in models AND the full `catalog`, 360+ leaves,
                      via `_tree_group`; `_tree_load` routes `("model",key)`
                      → `load_model` and `("smiles",smi)` → `build_smiles`)
-                     and a **bottom** dock (full periodic table), both
-                     toggleable from View;
+                     (leaves drag onto the 2D canvas via `_LibraryTree`
+                     mimeData → `_on_drop_molecule`/`_compound_2d` →
+                     `sketch.add_fragment`) and a **bottom** dock (full
+                     periodic table), both toggleable from View; the 2D
+                     sketch mirrors the 3D on load/build (`_sync_sketch`) but
+                     a `_sketch_dirty` flag stops 3D edits clobbering hand-
+                     built multi-molecule work (force-sync on explicit
+                     load / Flatten);
                      menus (File / Molecule / Crystal / Structure / View /
                      Help), toolbar, `.kmol` open/save, PNG export,
                      `flatten_to_2d`, and the RDKit actions (From SMILES…,

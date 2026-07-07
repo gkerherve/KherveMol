@@ -44,15 +44,31 @@ atom-editable.
   empty space to spawn a new atom (of the active element) bonded to it.
   Click empty space to drop a lone atom. Click an existing bond to cycle
   single → double → triple.
-- **Move** — drag atoms around.
+- **Move** — drag an atom to move its **whole molecule**.
 - **Atom** — click an atom to re-label it to the active element.
 - **Erase** — click an atom (removes it and its bonds) or a bond.
 - **All labels** shows every atom's symbol (including carbons); **Clear**
   empties the sketch.
 
-The sketch **enforces valence** — it won't add or raise a bond past what an
-atom can hold (oxygen stops at two bonds, carbon at four, etc.), so you
-can't draw chemically impossible structures.
+New bonds snap to a fixed length and 30° angles, so hand-drawn chains keep
+tidy (~120°) geometry. The sketch also **enforces valence** — it won't add
+or raise a bond past what an atom can hold (oxygen stops at two bonds,
+carbon at four), so you can't draw chemically impossible structures.
+
+### Assembling molecules
+
+The 2D sketch is a multi-molecule canvas:
+
+- **Drag a compound from the library** onto the sketch to drop it in as a
+  new molecule — drag several to place them side by side.
+- **Move** each molecule independently.
+- **Draw** from an atom in one molecule to an atom in another to **bond them
+  together** (valence permitting).
+- **Erase** a bond to **break** a molecule into pieces, then move them apart
+  or re-bond.
+
+Then **Structure ▸ Build 3D from 2D sketch** (Ctrl+B) turns what you've
+assembled into a 3D model.
 
 ## Library & elements
 
