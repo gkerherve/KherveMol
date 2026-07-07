@@ -347,27 +347,43 @@ class Viewer3D(QWidget):
             return
         anchor = self.selected if self.selected is not None else \
             (len(self.mol.atoms) - 1 if self.mol.atoms else None)
+        placed_free = False
         if anchor is None:
             self.mol.atoms.append([element, 0.0, 0.0, 0.0])
             self.selected = 0
         else:
             free = model.free_valence(self.mol.atoms, self.mol.bonds, anchor)
-            if free < self.order:
-                el = self.mol.atoms[anchor][0]
-                self.status.setText(
-                    f"{el} (atom {anchor}) has no room — "
-                    f"{elements.valence(el)} bonds max, {free} free.")
-                return
-            if elements.valence(element) < self.order:
-                names = ['', 'single', 'double', 'triple']
-                self.status.setText(f"{element} can't take a "
-                                    f"{names[self.order]} bond.")
-                return
-            self.selected = model.add_bonded_atom(
-                self.mol.atoms, self.mol.bonds, anchor, element, self.order)
+            can_bond = (free >= self.order
+                        and elements.valence(element) >= self.order)
+            if can_bond:
+                self.selected = model.add_bonded_atom(
+                    self.mol.atoms, self.mol.bonds, anchor, element, self.order)
+            else:
+                # Any element can still be added — as a free (unbonded) atom.
+                # Covers noble gases and adding onto an already-full atom, so
+                # the whole periodic table is usable.
+                self.selected = self._place_free(element)
+                placed_free = True
         self._update_status()
+        if placed_free:
+            self.status.setText(
+                f"Placed a free {element} atom (no room to bond it to the "
+                "selection — drag it, or select another atom to bond).")
         self.view.rebuild()
         self.structure_changed.emit()
+
+    def _place_free(self, element):
+        """Append an unbonded atom offset from the model, so it's visible."""
+        atoms = self.mol.atoms
+        if atoms:
+            n = len(atoms)
+            cx = sum(a[1] for a in atoms) / n + 3.0
+            cy = sum(a[2] for a in atoms) / n
+            cz = sum(a[3] for a in atoms) / n
+            atoms.append([element, cx, cy, cz])
+        else:
+            atoms.append([element, 0.0, 0.0, 0.0])
+        return len(atoms) - 1
 
     def delete_selected(self):
         if not self.editable or self.selected is None \

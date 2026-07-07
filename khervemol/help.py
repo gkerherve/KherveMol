@@ -96,8 +96,10 @@ RDKit; the named compounds build from SMILES (RDKit). The <b>Explorer</b>
 the <b>active element</b>. This drives both the 2D sketch and the 3D
 builder: in the 3D view, select an atom then click the <b>＋<i>El</i></b>
 button (or right-click ▸ <i>Add …</i>) to bond an atom of <i>any</i>
-element on — not just the ten quick buttons. Toggle the dock from
-<i>View</i>.</li>
+element on — not just the ten quick buttons. Every element in the table
+can be added: it bonds where chemistry allows (including Xe/Kr compounds),
+otherwise it's dropped in as a free atom (e.g. the inert He/Ne/Ar). Toggle
+the dock from <i>View</i>.</li>
 </ul>
 
 <h3>Molecule Explorer</h3>

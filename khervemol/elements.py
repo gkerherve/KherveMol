@@ -133,10 +133,11 @@ RADII = {
 _DEFAULT_RADIUS = 0.72
 
 #: Typical valence (max bonds) — the builder tracks free bonds; default 4.
+#: He/Ne/Ar are inert (0 bonds); Kr/Xe do form compounds (KrF2, XeF2/4/6).
 VALENCE = {"H": 1, "C": 4, "N": 3, "O": 2, "F": 1, "Cl": 1, "Br": 1,
            "I": 1, "S": 2, "P": 3, "B": 3, "Si": 4, "Na": 1, "Mg": 2,
            "Al": 3, "Ca": 2, "K": 1, "Zn": 2, "He": 0, "Ne": 0, "Ar": 0,
-           "Kr": 0, "Xe": 0}
+           "Kr": 2, "Xe": 6}
 
 #: Elements offered in the 3D viewer's quick Add-atom palette.
 PALETTE = ["H", "C", "N", "O", "F", "P", "S", "Cl", "Br", "I"]

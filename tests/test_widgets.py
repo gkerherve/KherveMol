@@ -29,6 +29,25 @@ def test_viewer_builds_atom(qapp):
     assert len(v.mol.atoms) == 2
 
 
+def test_any_element_can_be_added(qapp):
+    from khervemol import model
+    v = Viewer3D()
+    # metals, lanthanides/actinides, and noble gases are all placeable —
+    # bonded where chemistry allows, else as a free atom
+    for el in ("Fe", "Ce", "U", "Au", "Na", "Xe", "Kr", "He", "Ne"):
+        v.set_molecule(model.Molecule(atoms=[["C", 0.0, 0.0, 0.0]], name="c"))
+        v._on_atom_clicked(0)
+        v.order = 1
+        before = len(v.mol.atoms)
+        v.add_element(el)
+        assert len(v.mol.atoms) == before + 1, el
+    # Xe/Kr form bonds; He is inert (placed unbonded)
+    v.set_molecule(model.Molecule(atoms=[["C", 0.0, 0.0, 0.0]], name="c"))
+    v._on_atom_clicked(0)
+    v.add_element("Xe")
+    assert v.mol.bonds
+
+
 def test_viewer_crystal_not_editable(qapp):
     v = Viewer3D()
     v.set_molecule(library.make("nacl"))
