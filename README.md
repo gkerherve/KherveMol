@@ -1,3 +1,5 @@
+<img src="docs/icon.png" width="96" align="right" alt="KherveMol icon">
+
 # KherveMol
 
 **Draw chemical compounds and crystal structures in 2D and 3D.**
