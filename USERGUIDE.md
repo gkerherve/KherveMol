@@ -45,8 +45,33 @@ atom-editable.
   left — load 30+ ready-made structures: simple molecules, alcohols &
   acids, hydrocarbons, polymers, and crystal unit cells (simple cubic,
   BCC, FCC, HCP, diamond, NaCl, CsCl).
-- The **periodic-table dock** sets the active element used for 2D drawing;
-  it also shows each element's atomic number and valence.
+- The **periodic-table dock** along the bottom shows the whole table (all
+  118 elements, CPK-coloured with atomic numbers). Click one to set the
+  active drawing element; the header shows its name, atomic number and
+  valence. Toggle the dock (and the library) from the **View** menu.
+
+## SMILES & structure files (optional — RDKit)
+
+Install RDKit to unlock structure import — it has a native Python API and
+needs no Jupyter:
+
+```
+pip install rdkit
+```
+
+Then the **Molecule** menu gains:
+
+- **From SMILES…** (Ctrl+Shift+M) — type a SMILES string (e.g. `CCO`,
+  `c1ccccc1`, `CC(=O)O`). KherveMol adds hydrogens, embeds a real 3D
+  conformer (ETKDG + force-field cleanup) into the 3D view, and a flat
+  depiction into the 2D sketch.
+- **Import structure file…** — open a `.mol`, `.sdf`, or `.pdb` file (uses
+  the file's own 3D coordinates when present).
+- **Copy SMILES of structure** — best-effort canonical SMILES of the
+  current model, to the clipboard.
+
+Without RDKit the app runs normally; these menu items note that it's
+needed.
 
 ## Structure menu
 

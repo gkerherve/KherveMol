@@ -41,10 +41,15 @@ module and import.
                      app mark (wordmark + two-atom ball-and-stick on a teal
                      tile) and `view_cube_icon` (3D cube with one face
                      shaded, for the viewer's view toolbar).
-  - `elements.py`  — single source of truth for per-element data: CPK
-                     `COLORS`, display `RADII`, typical `VALENCE`, atomic
-                     `NUMBERS`, `NAMES`, the Add-atom `PALETTE`, and a
-                     `TABLE` layout (element, row, col) for the picker.
+  - `elements.py`  — single source of truth for per-element data across
+                     the **whole periodic table** (Z = 1..118): `SYMBOLS`
+                     (Z order), `NAMES`, `NUMBERS`, full Jmol `_JMOL`
+                     colours, tuned ball-and-stick `COLORS`/`RADII` for the
+                     common elements (with sensible defaults for the rest),
+                     `VALENCE`, the 3D quick `PALETTE`, and `table_cells()`
+                     yielding `(symbol, row, col)` for the classic wide
+                     table (f-block below). `color/radius/valence/name/
+                     number/text_color` accessors fall back gracefully.
   - `model.py`     — the geometry **engine**. Isometric `_proj`, the
                      depth-sorted `_model(atoms, bonds, edges, ...)` that
                      turns 3D coordinates into **shape specs** (circles =
@@ -83,18 +88,32 @@ module and import.
                      Atom / Erase tools; Draw drags atom→atom (bond) or
                      atom→empty (new bonded atom), clicking a bond cycles
                      its order. `image()` rasterises for export.
-  - `periodic.py`  — `PeriodicPicker`: a compact periodic-table grid that
-                     sets the active drawing element (drives the 2D
-                     sketch's element); emits `picked(symbol)`.
+  - `periodic.py`  — `PeriodicPicker`: the **full** periodic-table grid
+                     (all 118 elements, atomic number + symbol per cell,
+                     CPK-coloured, f-block below) built from
+                     `elements.table_cells()`. Sits in a full-width bottom
+                     dock (inside a `QScrollArea`); sets the active drawing
+                     element and emits `picked(symbol)`.
+  - `rdkit_io.py`  — **optional** RDKit bridge (guarded import;
+                     `available()`): `molecule_from_smiles` (AddHs → ETKDG
+                     embed → MMFF/UFF cleanup → 3D `Molecule`),
+                     `sketch_from_smiles` (`Compute2DCoords` → 2D graph),
+                     `molecule_from_file` (`.mol`/`.sdf`/`.pdb`), and
+                     `smiles_from_structure` (RWMol → canonical SMILES).
+                     Aromatic bonds are Kekulised so orders read as 1/2/3.
+                     Install with `pip install rdkit`; the app runs without
+                     it and the menu items say when it's needed.
   - `document.py`  — the `.kmol` JSON format (both the 3D `Molecule` incl.
                      crystal edges + view, and the 2D sketch) and PNG
                      export. `FORMAT_VERSION`.
   - `mainwindow.py`— `MainWindow` shell: a `QTabWidget` (3D View / 2D
-                     Sketch), a left dock (library tree + periodic picker),
+                     Sketch), a **left** dock (library tree) and a **bottom**
+                     dock (full periodic table), both toggleable from View;
                      menus (File / Molecule / Crystal / Structure / View /
-                     Help), toolbar, `.kmol` open/save, PNG export, and
-                     `flatten_to_2d` (project the current 3D model into the
-                     sketch).
+                     Help), toolbar, `.kmol` open/save, PNG export,
+                     `flatten_to_2d`, and the RDKit actions (From SMILES…,
+                     Import structure file…, Copy SMILES of structure — each
+                     guarded by `rdkit_io.available()`).
   - `help.py`      — About dialog + in-app User Guide (`Help ▸ User
                      Guide`, F1). Keep the guide and `USERGUIDE.md` in sync
                      when features change.
@@ -151,11 +170,19 @@ and extend the round-trip tests in `tests/test_document.py`.
 - **Window style**: Fusion default; themes shared with the family (View ▸
   Theme), teal-green signature.
 
+## Optional RDKit integration
+
+`rdkit_io.py` is imported behind a `try/except`; **never** import `rdkit`
+at module top-level elsewhere or add it to `requirements.txt` as a hard
+dependency — the app must run without it. New RDKit-backed features go in
+`rdkit_io.py` (guarded), get a menu item gated on `rdkit_io.available()`,
+and a test marked `skipif(not rdkit_io.available())`.
+
 ## Roadmap
 
-- Optional RDKit seam: SMILES → structure and CIF → crystal import (guard
-  the import so the app still runs without it).
-- Auto-generate 3D coordinates from a 2D sketch (a small force field).
+- CIF → crystal import via RDKit / pymatgen (still guarded/optional).
+- Auto-generate 3D coordinates from a 2D sketch when RDKit is absent (a
+  small built-in force field), so the tabs are fully bidirectional offline.
 - Measure tool (bond lengths / angles); multiple molecules per document.
 
 ## Commit / push policy

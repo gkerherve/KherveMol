@@ -25,8 +25,12 @@ OpenGL), so it runs with just PyQt5 and qtawesome.
 - **2D structure sketcher** — draw flat line formulae: drag to bond, click
   a bond to cycle its order, re-label or erase atoms. Flatten any 3D model
   into the sketch with one command.
-- **Periodic-table element picker**, **`.kmol` save/open**, and **PNG
-  export**.
+- **Full periodic table** — all 118 elements, CPK-coloured, as a dockable
+  element picker.
+- **SMILES & file import (optional, via RDKit)** — type a SMILES string to
+  embed a real 3D conformer, or open `.mol` / `.sdf` / `.pdb` files. Works
+  headless, no Jupyter. `pip install rdkit` to enable.
+- **`.kmol` save/open** and **PNG export**.
 - Themeable UI shared with the rest of the Kherve family.
 
 ## Install & run

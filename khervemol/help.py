@@ -61,8 +61,26 @@ the active element. <b>Erase</b> — click an atom or bond to remove it.</li>
 load 30+ ready-made structures — small molecules, alcohols &amp; acids,
 hydrocarbons, polymers, and crystal unit cells (SC, BCC, FCC, HCP,
 diamond, NaCl, CsCl).</li>
-<li>The <b>periodic-table dock</b> sets the active element for drawing.</li>
+<li>The <b>periodic-table dock</b> along the bottom shows the whole table
+(all 118 elements, CPK-coloured with atomic numbers); click one to make it
+the active drawing element. Toggle the dock from <i>View</i>.</li>
 </ul>
+
+<h3>SMILES &amp; structure files (RDKit)</h3>
+<p>If <b>RDKit</b> is installed (<code>pip install rdkit</code>), the
+<b>Molecule</b> menu unlocks:</p>
+<ul>
+<li><b>From SMILES…</b> — type a SMILES string (e.g. <code>CCO</code>,
+<code>c1ccccc1</code>, <code>CC(=O)O</code>) and KherveMol embeds a real
+3D conformer (with hydrogens, force-field cleaned) into the 3D view and a
+flat depiction into the 2D sketch.</li>
+<li><b>Import structure file…</b> — open a <code>.mol</code>,
+<code>.sdf</code> or <code>.pdb</code> file.</li>
+<li><b>Copy SMILES of structure</b> — best-effort canonical SMILES of the
+current model, to the clipboard.</li>
+</ul>
+<p>Everything else works without RDKit; the menu items say when it's
+needed.</p>
 
 <h3>Files</h3>
 <ul>

@@ -12,12 +12,12 @@ import os
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (QAction, QActionGroup, QApplication, QDockWidget,
-                             QFileDialog, QMainWindow, QMessageBox, QSplitter,
-                             QTabWidget, QTreeWidget, QTreeWidgetItem,
-                             QVBoxLayout, QWidget)
+                             QFileDialog, QInputDialog, QMainWindow,
+                             QMessageBox, QScrollArea, QTabWidget, QTreeWidget,
+                             QTreeWidgetItem)
 
 from . import (__version__, document, help as help_mod, icons, library, model,
-               periodic, style)
+               periodic, rdkit_io, style)
 from .editor2d import Editor2D
 from .viewer3d import Viewer3D
 
@@ -50,10 +50,9 @@ class MainWindow(QMainWindow):
 
     # --------------------------------------------------------------- docks
     def _build_dock(self):
-        dock = QDockWidget("Library", self)
-        dock.setAllowedAreas(Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea)
-        splitter = QSplitter(Qt.Vertical)
-
+        # Left: the molecule / crystal library tree.
+        lib_dock = QDockWidget("Library", self)
+        lib_dock.setAllowedAreas(Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea)
         self.tree = QTreeWidget()
         self.tree.setHeaderHidden(True)
         for title, keys in library.CATEGORIES:
@@ -70,20 +69,23 @@ class MainWindow(QMainWindow):
             parent.setExpanded(True)
         self.tree.itemActivated.connect(self._tree_load)
         self.tree.itemDoubleClicked.connect(self._tree_load)
-        splitter.addWidget(self.tree)
+        lib_dock.setWidget(self.tree)
+        self.addDockWidget(Qt.LeftDockWidgetArea, lib_dock)
+        self._library_dock = lib_dock
 
+        # Bottom: the full periodic table (scrolls if the window is narrow).
+        pt_dock = QDockWidget("Periodic table", self)
+        pt_dock.setAllowedAreas(Qt.BottomDockWidgetArea | Qt.TopDockWidgetArea)
         self.picker = periodic.PeriodicPicker()
         self.picker.picked.connect(self._on_element_picked)
-        wrap = QWidget()
-        lay = QVBoxLayout(wrap)
-        lay.setContentsMargins(0, 0, 0, 0)
-        lay.addWidget(self.picker)
-        splitter.addWidget(wrap)
-        splitter.setSizes([420, 320])
-
-        dock.setWidget(splitter)
-        self.addDockWidget(Qt.LeftDockWidgetArea, dock)
-        self._library_dock = dock
+        scroll = QScrollArea()
+        scroll.setWidget(self.picker)
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll.setFrameShape(QScrollArea.NoFrame)
+        pt_dock.setWidget(scroll)
+        self.addDockWidget(Qt.BottomDockWidgetArea, pt_dock)
+        self._ptable_dock = pt_dock
 
     # --------------------------------------------------------------- menus
     def _build_menus(self):
@@ -101,6 +103,12 @@ class MainWindow(QMainWindow):
         self._act(m_file, "Exit", self.close, "Ctrl+Q")
 
         m_mol = mb.addMenu("&Molecule")
+        smi = "" if rdkit_io.available() else "  (needs RDKit)"
+        self._act(m_mol, "From SMILES…" + smi, self.from_smiles,
+                  "Ctrl+Shift+M", "mdi.molecule")
+        self._act(m_mol, "Import structure file…" + smi, self.import_file)
+        self._act(m_mol, "Copy SMILES of structure" + smi, self.copy_smiles)
+        m_mol.addSeparator()
         for title, keys in library.CATEGORIES:
             if title == "Crystal structures":
                 continue
@@ -135,6 +143,9 @@ class MainWindow(QMainWindow):
         m_view.addSeparator()
         self._act(m_view, "Show 3D View", lambda: self.tabs.setCurrentIndex(0))
         self._act(m_view, "Show 2D Sketch", lambda: self.tabs.setCurrentIndex(1))
+        m_view.addSeparator()
+        m_view.addAction(self._library_dock.toggleViewAction())
+        m_view.addAction(self._ptable_dock.toggleViewAction())
 
         m_help = mb.addMenu("&Help")
         self._act(m_help, "User Guide", self.show_guide, "F1")
@@ -208,6 +219,73 @@ class MainWindow(QMainWindow):
 
     def _set_theme(self, name):
         style.apply_style(QApplication.instance(), name)
+
+    # ---------------------------------------------------------- RDKit bridge
+    def _need_rdkit(self):
+        if rdkit_io.available():
+            return True
+        QMessageBox.information(
+            self, "RDKit required",
+            "This feature uses RDKit for SMILES parsing and structure "
+            "import.\n\nInstall it with:\n\n    pip install rdkit\n\n"
+            "then restart KherveMol.")
+        return False
+
+    def from_smiles(self):
+        if not self._need_rdkit():
+            return
+        text, ok = QInputDialog.getText(
+            self, "Build from SMILES",
+            "Enter a SMILES string (e.g. CCO, c1ccccc1, CC(=O)O):")
+        if not ok or not text.strip():
+            return
+        smiles = text.strip()
+        try:
+            mol = rdkit_io.molecule_from_smiles(smiles)
+            self.viewer.set_molecule(mol)
+            self.tabs.setCurrentIndex(0)
+            try:
+                sa, sb = rdkit_io.sketch_from_smiles(smiles)
+                self.sketch.set_structure(sa, sb)
+            except Exception:                       # noqa: BLE001
+                pass
+            self._retitle()
+            self.statusBar().showMessage(f"Built {smiles} with RDKit "
+                                         f"({mol.formula()})")
+        except Exception as exc:                    # noqa: BLE001
+            QMessageBox.warning(self, "SMILES failed", str(exc))
+
+    def import_file(self):
+        if not self._need_rdkit():
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Import structure", "",
+            "Chemical files (*.mol *.sdf *.pdb);;All files (*)")
+        if not path:
+            return
+        try:
+            mol = rdkit_io.molecule_from_file(path)
+            self.viewer.set_molecule(mol)
+            self.tabs.setCurrentIndex(0)
+            self._retitle()
+            self.statusBar().showMessage(f"Imported {os.path.basename(path)} "
+                                         f"({mol.formula()})")
+        except Exception as exc:                    # noqa: BLE001
+            QMessageBox.warning(self, "Import failed", str(exc))
+
+    def copy_smiles(self):
+        if not self._need_rdkit():
+            return
+        mol = self.viewer.mol
+        smiles = rdkit_io.smiles_from_structure(mol.atoms, mol.bonds)
+        if not smiles:
+            QMessageBox.information(
+                self, "No SMILES",
+                "RDKit could not derive a valid SMILES from this structure "
+                "(it may be a crystal lattice or chemically incomplete).")
+            return
+        QApplication.clipboard().setText(smiles)
+        self.statusBar().showMessage(f"Copied SMILES: {smiles}")
 
     # -------------------------------------------------------------- files
     def new_document(self):
