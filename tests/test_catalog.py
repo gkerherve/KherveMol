@@ -18,10 +18,17 @@ from khervemol import catalog, rdkit_io
 
 def test_catalog_is_populated():
     entries = catalog.all_entries()
-    assert len(entries) >= 100
+    assert len(entries) >= 300          # curated families + generated series
     # every entry has a non-empty name and SMILES
     for name, smi in entries:
         assert name and smi
+
+
+def test_generated_series_present():
+    names = {n for n, _s in catalog.all_entries()}
+    assert {"Methane", "Octane", "Cyclohexane"} <= names
+    # a generated long-chain member exists
+    assert "Icosane" in names
 
 
 def test_grouped_matches_flat():
