@@ -50,12 +50,20 @@ atom-editable.
 - **All labels** shows every atom's symbol (including carbons); **Clear**
   empties the sketch.
 
+The sketch **enforces valence** — it won't add or raise a bond past what an
+atom can hold (oxygen stops at two bonds, carbon at four, etc.), so you
+can't draw chemically impossible structures.
+
 ## Library & elements
 
-- The **Molecule** and **Crystal** menus — and the library tree on the
-  left — load 30+ ready-made structures: simple molecules, alcohols &
-  acids, hydrocarbons, polymers, and crystal unit cells (simple cubic,
-  BCC, FCC, HCP, diamond, NaCl, CsCl, zinc blende, fluorite, perovskite).
+- The **left library tree** (and the Molecule/Crystal menus) list the
+  built-in 3D models — simple molecules, alcohols & acids, hydrocarbons,
+  polymers, and crystal unit cells (simple cubic, BCC, FCC, HCP, diamond,
+  NaCl, CsCl, zinc blende, fluorite, perovskite) — **and 300+ named
+  compounds** (drugs, amino acids, sugars, terpenes, steroids, monomers,
+  plus homologous series) grouped by family. Built-in models build without
+  RDKit; the named compounds build from SMILES (need RDKit). The
+  **Explorer** (Ctrl+L) is the same list with search and preview.
 - The **periodic-table dock** along the bottom shows the whole table (all
   118 elements, CPK-coloured with atomic numbers). Click one to set the
   **active element** (header shows its name, Z and valence). It drives both

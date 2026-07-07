@@ -16,8 +16,8 @@ from PyQt5.QtWidgets import (QAction, QActionGroup, QApplication, QDockWidget,
                              QMessageBox, QScrollArea, QTabWidget, QTreeWidget,
                              QTreeWidgetItem)
 
-from . import (__version__, document, elements, help as help_mod, icons,
-               library, model, periodic, rdkit_io, style, svgexport)
+from . import (__version__, catalog, document, elements, help as help_mod,
+               icons, library, model, periodic, rdkit_io, style, svgexport)
 from .ai_assistant import AiDock
 from .editor2d import Editor2D
 from .explorer import MoleculeExplorer
@@ -62,18 +62,16 @@ class MainWindow(QMainWindow):
         lib_dock.setAllowedAreas(Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea)
         self.tree = QTreeWidget()
         self.tree.setHeaderHidden(True)
+        # Built-in 3D models (build without RDKit) — expanded.
         for title, keys in library.CATEGORIES:
-            parent = QTreeWidgetItem([title])
-            font = parent.font(0)
-            font.setBold(True)
-            parent.setFont(0, font)
-            self.tree.addTopLevelItem(parent)
-            for key in keys:
-                child = QTreeWidgetItem([library.label(key)])
-                child.setData(0, Qt.UserRole, key)
-                child.setIcon(0, icons.element_icon(_key_color(key)))
-                parent.addChild(child)
-            parent.setExpanded(True)
+            self._tree_group(title, [(library.label(k), ("model", k))
+                                     for k in keys], True,
+                             lambda k: _key_color(k[1]))
+        # The full named-compound catalog (SMILES) — collapsed groups.
+        for cat, entries in catalog.grouped():
+            self._tree_group(cat, [(name, ("smiles", smi))
+                                   for name, smi in entries], False,
+                             lambda _v: elements.color("C"))
         self.tree.itemActivated.connect(self._tree_load)
         self.tree.itemDoubleClicked.connect(self._tree_load)
         lib_dock.setWidget(self.tree)
@@ -93,6 +91,23 @@ class MainWindow(QMainWindow):
         pt_dock.setWidget(scroll)
         self.addDockWidget(Qt.BottomDockWidgetArea, pt_dock)
         self._ptable_dock = pt_dock
+
+    def _tree_group(self, title, entries, expanded, color_fn):
+        """Add a bold category with (label, (kind, value)) leaves to the
+        library tree."""
+        parent = QTreeWidgetItem([title])
+        font = parent.font(0)
+        font.setBold(True)
+        parent.setFont(0, font)
+        self.tree.addTopLevelItem(parent)
+        for label, data in entries:
+            child = QTreeWidgetItem([label])
+            child.setData(0, Qt.UserRole, data)
+            child.setIcon(0, icons.element_icon(color_fn(data)))
+            if data[0] == "smiles":
+                child.setToolTip(0, data[1])
+            parent.addChild(child)
+        parent.setExpanded(expanded)
 
     def _build_ai_dock(self):
         self.ai_dock = AiDock(self)
@@ -216,9 +231,14 @@ class MainWindow(QMainWindow):
 
     # ------------------------------------------------------------- actions
     def _tree_load(self, item, _col=0):
-        key = item.data(0, Qt.UserRole)
-        if key:
-            self.load_model(key)
+        data = item.data(0, Qt.UserRole)
+        if not data:
+            return
+        kind, value = data
+        if kind == "model":
+            self.load_model(value)
+        else:
+            self.build_smiles(value, item.text(0))
 
     def load_model(self, key):
         self.viewer.set_molecule(library.make(key))

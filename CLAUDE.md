@@ -97,8 +97,11 @@ module and import.
                      `[el,x,y]`, bonds `[i,j,order]`) with Draw / Move /
                      Atom / Erase tools (`set_tool`); Draw drags atom→atom
                      (bond) or atom→empty (new bonded atom), clicking a bond
-                     cycles order. Right-click emits `context_requested`.
-                     `image()` rasterises for export.
+                     cycles order. **Enforces valence** like the 3D builder
+                     (`_free`/`_bond_capacity`): refuses bonds / order
+                     increases that exceed an atom's valence, so impossible
+                     structures can't be drawn. Right-click emits
+                     `context_requested`. `image()` rasterises for export.
                      `MainWindow._sync_sketch` mirrors the 3D `Molecule`
                      into it on load / build / 3D edit — via RDKit's clean
                      `Compute2DCoords` depiction when available, else
@@ -163,8 +166,12 @@ module and import.
                      viewBox. Wired to File ▸ Export SVG (Ctrl+Shift+E) and
                      both context menus.
   - `mainwindow.py`— `MainWindow` shell: a `QTabWidget` (3D View / 2D
-                     Sketch), a **left** dock (library tree) and a **bottom**
-                     dock (full periodic table), both toggleable from View;
+                     Sketch), a **left** dock (library tree — both the
+                     built-in models AND the full `catalog`, 360+ leaves,
+                     via `_tree_group`; `_tree_load` routes `("model",key)`
+                     → `load_model` and `("smiles",smi)` → `build_smiles`)
+                     and a **bottom** dock (full periodic table), both
+                     toggleable from View;
                      menus (File / Molecule / Crystal / Structure / View /
                      Help), toolbar, `.kmol` open/save, PNG export,
                      `flatten_to_2d`, and the RDKit actions (From SMILES…,

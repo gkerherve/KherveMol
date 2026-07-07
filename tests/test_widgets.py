@@ -65,6 +65,36 @@ def test_sketch_tool_switch(qapp):
     assert e.tool == "erase"
 
 
+def test_library_tree_includes_catalog(qapp):
+    from PyQt5.QtCore import Qt
+    from khervemol.mainwindow import MainWindow
+    w = MainWindow()
+
+    def leaves(it):
+        n = 1 if it.data(0, Qt.UserRole) is not None else 0
+        for i in range(it.childCount()):
+            n += leaves(it.child(i))
+        return n
+    total = sum(leaves(w.tree.topLevelItem(i))
+                for i in range(w.tree.topLevelItemCount()))
+    assert total > 300                              # models + 328 catalog
+
+
+def test_sketch_valence_enforced(qapp):
+    from khervemol.editor2d import Editor2D
+    e = Editor2D()
+    # oxygen (valence 2) already has a double bond → no extra bond allowed
+    e.set_structure([["O", 0, 0], ["C", 50, 0], ["C", 0, 50]], [[0, 1, 2]])
+    e.canvas._add_or_cycle_bond(0, 2)
+    assert e.bonds == [[0, 1, 2]]
+    # cycling a C–O bond maxes at double (O can't take a triple), then wraps
+    e.set_structure([["C", 0, 0], ["O", 50, 0]], [[0, 1, 1]])
+    e.canvas._cycle_order(0)
+    assert e.bonds == [[0, 1, 2]]
+    e.canvas._cycle_order(0)
+    assert e.bonds == [[0, 1, 1]]
+
+
 def test_perovskite_and_new_crystals(qapp):
     for key in ("perovskite", "zincblende", "fluorite"):
         mol = library.make(key)

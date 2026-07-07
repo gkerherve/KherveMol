@@ -129,7 +129,11 @@ class _Canvas(QGraphicsView):
             moved = self._press is not None and \
                 (abs(sp.x() - self._press.x()) + abs(sp.y() - self._press.y())) > 6
             if tgt is None and moved:
-                tgt = self._new_atom(sp)
+                # only grow a new bonded atom if the anchor has a free bond
+                if self._free(src) >= 1:
+                    tgt = self._new_atom(sp)
+                else:
+                    self._note(src)
             if tgt is not None and tgt != src:
                 self._add_or_cycle_bond(src, tgt)
             elif tgt == src and not moved:
@@ -145,15 +149,43 @@ class _Canvas(QGraphicsView):
         self._o.atoms.append([self._o.element, sp.x(), sp.y()])
         return len(self._o.atoms) - 1
 
+    # --- valence: refuse chemically impossible bonds (like the 3D builder)
+    def _used(self, idx):
+        return sum(o for a, b, o in self._o.bonds if idx in (a, b))
+
+    def _free(self, idx):
+        return elements.valence(self._o.atoms[idx][0]) - self._used(idx)
+
+    def _bond_capacity(self, i, j, current):
+        """Highest order the bond between i,j may hold (≤3), given both
+        atoms' valences (with this bond's *current* order excluded)."""
+        atoms = self._o.atoms
+        fi = elements.valence(atoms[i][0]) - (self._used(i) - current)
+        fj = elements.valence(atoms[j][0]) - (self._used(j) - current)
+        return max(1, min(3, fi, fj))
+
+    def _note(self, idx):
+        el = self._o.atoms[idx][0]
+        if hasattr(self._o, "status"):
+            self._o.status.setText(
+                f"{el} is already at its maximum bonds "
+                f"(valence {elements.valence(el)}) — bond not allowed.")
+
     def _add_or_cycle_bond(self, i, j):
         for b in self._o.bonds:
             if {b[0], b[1]} == {i, j}:
-                b[2] = b[2] % 3 + 1
+                cap = self._bond_capacity(i, j, b[2])
+                b[2] = b[2] + 1 if b[2] < cap else 1
                 return
-        self._o.bonds.append([i, j, 1])
+        if self._free(i) >= 1 and self._free(j) >= 1:
+            self._o.bonds.append([i, j, 1])
+        else:
+            self._note(i if self._free(i) < 1 else j)
 
     def _cycle_order(self, bi):
-        self._o.bonds[bi][2] = self._o.bonds[bi][2] % 3 + 1
+        b = self._o.bonds[bi]
+        cap = self._bond_capacity(b[0], b[1], b[2])
+        b[2] = b[2] + 1 if b[2] < cap else 1
 
     def _erase_at(self, sp, ai):
         if ai is not None:

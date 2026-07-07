@@ -77,13 +77,20 @@ single → double → triple.</li>
 <li><b>Move</b> — drag atoms. <b>Atom</b> — click to re-label an atom to
 the active element. <b>Erase</b> — click an atom or bond to remove it.</li>
 </ul>
+<p>The sketch <b>enforces valence</b>: it won't let you add or raise a bond
+beyond what an atom can hold (e.g. oxygen stops at two bonds), so you can't
+draw chemically impossible structures.</p>
 
 <h3>Library &amp; elements</h3>
 <ul>
-<li><b>Molecule</b> and <b>Crystal</b> menus (and the left library tree)
-load 30+ ready-made structures — small molecules, alcohols &amp; acids,
-hydrocarbons, polymers, and crystal unit cells (SC, BCC, FCC, HCP,
-diamond, NaCl, CsCl, zinc blende, fluorite, perovskite).</li>
+<li>The <b>left library tree</b> (and the Molecule/Crystal menus) list the
+built-in 3D models — small molecules, alcohols &amp; acids, hydrocarbons,
+polymers, and crystal unit cells (SC, BCC, FCC, HCP, diamond, NaCl, CsCl,
+zinc blende, fluorite, perovskite) — <b>and 300+ named compounds</b>
+(drugs, amino acids, sugars, terpenes, steroids, monomers, plus whole
+homologous series) grouped by family. The built-in models build without
+RDKit; the named compounds build from SMILES (RDKit). The <b>Explorer</b>
+(Ctrl+L) is the same list with search and a preview.</li>
 <li>The <b>periodic-table dock</b> along the bottom shows the whole table
 (all 118 elements, CPK-coloured with atomic numbers). Click one to make it
 the <b>active element</b>. This drives both the 2D sketch and the 3D
