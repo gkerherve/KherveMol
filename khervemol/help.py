@@ -66,6 +66,14 @@ diamond, NaCl, CsCl).</li>
 the active drawing element. Toggle the dock from <i>View</i>.</li>
 </ul>
 
+<h3>Molecule Explorer</h3>
+<p><b>Molecule ▸ Explorer…</b> (Ctrl+L, or the magnifier on the toolbar)
+opens a searchable browser of structures: the built-in 3D models plus
+~120 named compounds (solvents, drugs, amino acids, sugars, aromatics,
+nucleobases, functional groups…). Type in the search box to filter by
+name, pick an entry to preview it, then <b>Build in 3D</b>. The built-in
+models build with or without RDKit; the named compounds need RDKit.</p>
+
 <h3>SMILES &amp; structure files (RDKit)</h3>
 <p>If <b>RDKit</b> is installed (<code>pip install rdkit</code>), the
 <b>Molecule</b> menu unlocks:</p>

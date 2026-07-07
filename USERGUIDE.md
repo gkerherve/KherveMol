@@ -50,6 +50,17 @@ atom-editable.
   active drawing element; the header shows its name, atomic number and
   valence. Toggle the dock (and the library) from the **View** menu.
 
+## Molecule Explorer
+
+**Molecule ▸ Explorer…** (Ctrl+L, or the magnifier button) opens a
+searchable browser of structures — the built-in 3D models plus ~120 named
+compounds grouped by family (solvents, hydrocarbons, aromatics, functional
+groups, acids, amino acids, sugars & vitamins, nucleobases, drugs &
+bioactive, gases). Type in the search box to filter by name, click an
+entry to preview it, then **Build in 3D** to load it into the 3D view (and
+2D sketch). The built-in models build with or without RDKit; the named
+compounds are built from SMILES via RDKit.
+
 ## SMILES & structure files (optional — RDKit)
 
 Install RDKit to unlock structure import — it has a native Python API and

@@ -27,6 +27,9 @@ OpenGL), so it runs with just PyQt5 and qtawesome.
   into the sketch with one command.
 - **Full periodic table** — all 118 elements, CPK-coloured, as a dockable
   element picker.
+- **Molecule Explorer** — a searchable browser of the built-in models plus
+  ~120 named compounds (drugs, amino acids, sugars, solvents, aromatics,
+  nucleobases…), with a live preview and one-click build.
 - **SMILES & file import (optional, via RDKit)** — type a SMILES string to
   embed a real 3D conformer, or open `.mol` / `.sdf` / `.pdb` files. Works
   headless, no Jupyter. `pip install rdkit` to enable.

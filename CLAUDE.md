@@ -94,6 +94,20 @@ module and import.
                      `elements.table_cells()`. Sits in a full-width bottom
                      dock (inside a `QScrollArea`); sets the active drawing
                      element and emits `picked(symbol)`.
+  - `catalog.py`   — a curated list of ~120 named compounds `(category,
+                     name, SMILES)` — solvents, hydrocarbons, aromatics,
+                     functional groups, acids, amino acids, sugars,
+                     nucleobases, drugs, gases. `grouped()`/`all_entries()`/
+                     `categories()`. Built into 3D/2D via `rdkit_io`.
+  - `explorer.py`  — `MoleculeExplorer(QDialog)`: a searchable browser
+                     (search box + category tree) with a live preview pane.
+                     Lists the built-in models (preview/build via `library`,
+                     no RDKit) and the `catalog` compounds (preview =
+                     `sketch_from_smiles` → `render.specs_from_graph2d`;
+                     build via SMILES, RDKit-gated). `result()` returns
+                     `(kind, value, name)` where kind is `"model"` (library
+                     key) or `"smiles"`; `MainWindow.open_explorer` routes
+                     it to `load_model` / `build_smiles`.
   - `rdkit_io.py`  — **optional** RDKit bridge (guarded import;
                      `available()`): `molecule_from_smiles` (AddHs → ETKDG
                      embed → MMFF/UFF cleanup → 3D `Molecule`),

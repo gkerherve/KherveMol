@@ -19,6 +19,7 @@ from PyQt5.QtWidgets import (QAction, QActionGroup, QApplication, QDockWidget,
 from . import (__version__, document, help as help_mod, icons, library, model,
                periodic, rdkit_io, style)
 from .editor2d import Editor2D
+from .explorer import MoleculeExplorer
 from .viewer3d import Viewer3D
 
 
@@ -104,6 +105,8 @@ class MainWindow(QMainWindow):
 
         m_mol = mb.addMenu("&Molecule")
         smi = "" if rdkit_io.available() else "  (needs RDKit)"
+        self._act(m_mol, "Explorer…", self.open_explorer, "Ctrl+L",
+                  "mdi.magnify")
         self._act(m_mol, "From SMILES…" + smi, self.from_smiles,
                   "Ctrl+Shift+M", "mdi.molecule")
         self._act(m_mol, "Import structure file…" + smi, self.import_file)
@@ -169,6 +172,7 @@ class MainWindow(QMainWindow):
         self._tb_act(tb, "Save", self.save, "mdi.content-save")
         self._tb_act(tb, "Export", self.export_png, "mdi.image")
         tb.addSeparator()
+        self._tb_act(tb, "Explorer", self.open_explorer, "mdi.magnify")
         self._tb_act(tb, "Benzene", lambda: self.load_model("benzene"),
                      "mdi.hexagon-outline")
         self._tb_act(tb, "Water", lambda: self.load_model("water"),
@@ -231,6 +235,19 @@ class MainWindow(QMainWindow):
             "then restart KherveMol.")
         return False
 
+    def open_explorer(self):
+        dlg = MoleculeExplorer(self)
+        if dlg.exec_() != MoleculeExplorer.Accepted:
+            return
+        choice = dlg.result()
+        if not choice:
+            return
+        kind, value, name = choice
+        if kind == "model":
+            self.load_model(value)
+        else:
+            self.build_smiles(value, name)
+
     def from_smiles(self):
         if not self._need_rdkit():
             return
@@ -239,9 +256,14 @@ class MainWindow(QMainWindow):
             "Enter a SMILES string (e.g. CCO, c1ccccc1, CC(=O)O):")
         if not ok or not text.strip():
             return
-        smiles = text.strip()
+        self.build_smiles(text.strip())
+
+    def build_smiles(self, smiles, label=None):
+        """Build *smiles* into the 3D viewer and 2D sketch (needs RDKit)."""
+        if not self._need_rdkit():
+            return
         try:
-            mol = rdkit_io.molecule_from_smiles(smiles)
+            mol = rdkit_io.molecule_from_smiles(smiles, label=label)
             self.viewer.set_molecule(mol)
             self.tabs.setCurrentIndex(0)
             try:
@@ -250,7 +272,8 @@ class MainWindow(QMainWindow):
             except Exception:                       # noqa: BLE001
                 pass
             self._retitle()
-            self.statusBar().showMessage(f"Built {smiles} with RDKit "
+            shown = label or smiles
+            self.statusBar().showMessage(f"Built {shown} with RDKit "
                                          f"({mol.formula()})")
         except Exception as exc:                    # noqa: BLE001
             QMessageBox.warning(self, "SMILES failed", str(exc))
