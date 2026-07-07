@@ -1,8 +1,10 @@
-"""A compact periodic-table element picker.
+"""The full periodic-table element picker.
 
-`PeriodicPicker` is a small grid of element buttons laid out in their
-classic table positions. Clicking one emits `picked(symbol)`. Used as the
-left dock so the active drawing element is always one click away.
+`PeriodicPicker` lays out every element (Z = 1..118) in the classic wide
+table — s/p/d blocks in rows 1..7 and the f-block (lanthanides / actinides)
+below. Each cell shows the atomic number and symbol, coloured by the Jmol
+CPK scheme. Clicking one emits `picked(symbol)` and sets it active. Sized
+to sit in a full-width bottom dock so the whole table is readable.
 
 Copyright (C) 2026 Gwilherm Kerherve
 
@@ -13,10 +15,37 @@ the Free Software Foundation, either version 3 of the License, or
 """
 
 from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtWidgets import (QGridLayout, QLabel, QPushButton, QVBoxLayout,
-                             QWidget)
+from PyQt5.QtWidgets import (QGridLayout, QHBoxLayout, QLabel, QPushButton,
+                             QSizePolicy, QVBoxLayout, QWidget)
 
 from . import elements
+
+_CELL_W = 40
+_CELL_H = 34
+
+
+class _ElementButton(QPushButton):
+    def __init__(self, symbol):
+        super().__init__()
+        self.symbol = symbol
+        self.setCheckable(True)
+        self.setFixedSize(_CELL_W, _CELL_H)
+        z = elements.number(symbol)
+        self.setText(f"{z}\n{symbol}")
+        self.setToolTip(f"{z} — {elements.name(symbol)} "
+                        f"(valence {elements.valence(symbol)})")
+        self._paint(False)
+
+    def _paint(self, active):
+        color = elements.color(self.symbol)
+        border = ("2px solid #0c3b2e" if active else "1px solid #7f8a86")
+        self.setStyleSheet(
+            "QPushButton {"
+            f" background:{color}; color:{elements.text_color(self.symbol)};"
+            f" border:{border}; border-radius:4px;"
+            " font-size:8px; font-weight:bold; text-align:center;"
+            " padding:0px; }"
+            "QPushButton:hover { border:2px solid #159c74; }")
 
 
 class PeriodicPicker(QWidget):
@@ -26,49 +55,53 @@ class PeriodicPicker(QWidget):
         super().__init__(parent)
         self._buttons = {}
         self._active = "C"
+        self.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
+
         root = QVBoxLayout(self)
-        root.setContentsMargins(6, 6, 6, 6)
-        title = QLabel("Active element")
+        root.setContentsMargins(8, 6, 8, 6)
+        root.setSpacing(4)
+
+        header = QHBoxLayout()
+        title = QLabel("Periodic table")
         title.setStyleSheet("font-weight:bold;")
-        root.addWidget(title)
+        header.addWidget(title)
+        header.addStretch(1)
+        self._info = QLabel("")
+        self._info.setStyleSheet("color:#333;")
+        header.addWidget(self._info)
+        root.addLayout(header)
 
         grid = QGridLayout()
         grid.setSpacing(2)
-        for el, row, col in elements.TABLE:
-            btn = QPushButton(el)
-            btn.setFixedSize(30, 26)
-            btn.setCheckable(True)
-            btn.setToolTip(f"{elements.NUMBERS.get(el, '')}  "
-                           f"{elements.name(el)}")
-            self._style_button(btn, el, False)
-            btn.clicked.connect(lambda _=False, e=el: self.set_active(e))
+        grid.setContentsMargins(0, 0, 0, 0)
+        for sym, row, col in elements.table_cells():
+            btn = _ElementButton(sym)
+            btn.clicked.connect(lambda _=False, e=sym: self.set_active(e))
             grid.addWidget(btn, row, col)
-            self._buttons[el] = btn
-        root.addLayout(grid)
-        self._info = QLabel("")
-        self._info.setWordWrap(True)
-        self._info.setStyleSheet("color:#555; padding-top:4px;")
-        root.addWidget(self._info)
+            self._buttons[sym] = btn
+        # markers where La / Ac series pull out of the main body
+        for r, txt in ((6, "57-71"), (7, "89-103")):
+            lab = QLabel(txt)
+            lab.setAlignment(Qt.AlignCenter)
+            lab.setStyleSheet("color:#888; font-size:8px;")
+            grid.addWidget(lab, r, 3)
+        grid.setRowMinimumHeight(8, 6)          # gap before the f-block
+        wrap = QWidget()
+        wrap.setLayout(grid)
+        root.addWidget(wrap, 0, Qt.AlignLeft)
         root.addStretch(1)
         self.set_active("C")
-
-    def _style_button(self, btn, el, active):
-        color = elements.color(el)
-        border = "2px solid #159c74" if active else "1px solid #999"
-        btn.setStyleSheet(
-            f"QPushButton {{ background:{color}; color:{elements.text_color(el)};"
-            f" font-weight:bold; border:{border}; border-radius:4px; }}")
 
     def set_active(self, el):
         self._active = el
         for sym, btn in self._buttons.items():
             act = sym == el
             btn.setChecked(act)
-            self._style_button(btn, sym, act)
-        num = elements.NUMBERS.get(el, "?")
-        val = elements.VALENCE.get(el, "—")
-        self._info.setText(f"<b>{el}</b> — {elements.name(el)}<br>"
-                           f"Z = {num},  valence {val}")
+            btn._paint(act)
+        z = elements.number(el)
+        val = elements.valence(el)
+        self._info.setText(f"<b>{el}</b> — {elements.name(el)} &nbsp; "
+                           f"Z = {z}, valence {val}")
         self.picked.emit(el)
 
     def active(self):
