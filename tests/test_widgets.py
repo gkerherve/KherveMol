@@ -17,16 +17,16 @@ def test_viewer_builds_atom(qapp):
     from khervemol import model
     v = Viewer3D()
     v.set_molecule(library.make("methane"))
-    before = len(v.mol.atoms)
+    bonds_before = len(v.mol.bonds)
     v._on_atom_clicked(0)                      # select the carbon (full)
-    v.add_element("O")                         # blocked by valence
-    assert len(v.mol.atoms) == before
-    # a fresh carbon has free valence: adding an O succeeds
+    v.add_element("O")                         # can't bond a full C…
+    assert len(v.mol.bonds) == bonds_before    # …so no new bond is made
+    # a fresh carbon has free valence: adding an O bonds it
     v.set_molecule(model.Molecule(atoms=[["C", 0.0, 0.0, 0.0]], name="c"))
     v._on_atom_clicked(0)
     v.order = 1
     v.add_element("O")
-    assert len(v.mol.atoms) == 2
+    assert len(v.mol.atoms) == 2 and len(v.mol.bonds) == 1
 
 
 def test_any_element_can_be_added(qapp):
