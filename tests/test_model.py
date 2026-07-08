@@ -8,7 +8,99 @@ the Free Software Foundation, either version 3 of the License, or
 (at your option) any later version.
 """
 
-from khervemol import model
+import pytest
+
+from khervemol import elements, model
+
+
+def test_bond_lengths_are_chemical():
+    assert elements.bond_length("C", "O", 1) == 1.43
+    assert elements.bond_length("O", "C", 2) == 1.23      # symmetric
+    assert elements.bond_length("C", "C", 3) == 1.20
+    # unlisted pair → covalent-radius sum, shortened by order
+    assert elements.bond_length("Se", "Se", 1) == 2.40
+    assert elements.bond_length("Se", "Se", 2) < 2.40
+
+
+def test_added_atom_sits_at_the_ideal_length():
+    atoms, bonds = model.single_atom("C")
+    i = model.add_bonded_atom(atoms, bonds, 0, "O", 2)
+    assert model.distance(atoms, 0, i) == pytest.approx(1.23, abs=1e-6)
+
+
+def test_drag_swings_a_bond_without_stretching_it():
+    atoms, bonds = model.single_atom("C")
+    i = model.add_bonded_atom(atoms, bonds, 0, "O", 1)
+    # yank the O far away; the constraint pulls it back onto the C–O sphere
+    model.drag_atom(atoms, i, 200.0, 90.0, 0.0, 0.0, 1.0, 1.0, bonds=bonds)
+    assert model.distance(atoms, 0, i) == pytest.approx(1.43, abs=1e-3)
+    # without the bond list the drag is free
+    model.drag_atom(atoms, i, 200.0, 90.0, 0.0, 0.0, 1.0, 1.0)
+    assert model.distance(atoms, 0, i) > 2.0
+
+
+def test_constrain_atom_balances_several_bonds():
+    # formaldehyde: nudge the central C off its ideal spot, then constrain —
+    # all three bonds must come back to length at once.
+    atoms, bonds = model.single_atom("C")
+    model.add_bonded_atom(atoms, bonds, 0, "H", 1)
+    model.add_bonded_atom(atoms, bonds, 0, "H", 1)
+    model.add_bonded_atom(atoms, bonds, 0, "O", 2)
+    atoms[0][1] += 0.30
+    atoms[0][2] -= 0.20
+    atoms[0][3] += 0.15
+    model.constrain_atom(atoms, bonds, 0)
+    for k, target in ((1, 1.09), (2, 1.09), (3, 1.23)):
+        assert model.distance(atoms, 0, k) == pytest.approx(target, abs=1e-3)
+
+
+def test_set_bond_order_relengthens_and_respects_valence():
+    atoms, bonds = model.single_atom("C")
+    i = model.add_bonded_atom(atoms, bonds, 0, "O", 1)
+    assert model.distance(atoms, 0, i) == pytest.approx(1.43, abs=1e-6)
+    assert model.set_bond_order(atoms, bonds, 0, 2)
+    assert bonds[0][2] == 2
+    assert model.distance(atoms, 0, i) == pytest.approx(1.23, abs=1e-6)
+    # O has valence 2 — a triple C≡O will not fit
+    assert not model.can_set_bond_order(atoms, bonds, 0, 3)
+    assert not model.set_bond_order(atoms, bonds, 0, 3)
+    assert bonds[0][2] == 2
+
+
+def test_relax_bond_moves_the_smaller_side_only():
+    atoms, bonds = model.single_atom("C")
+    model.add_bonded_atom(atoms, bonds, 0, "H", 1)
+    model.add_bonded_atom(atoms, bonds, 0, "H", 1)
+    o = model.add_bonded_atom(atoms, bonds, 0, "O", 1)
+    before = [list(a) for a in atoms]
+    model.set_bond_order(atoms, bonds, 2, 2)         # the C–O bond
+    assert atoms[:3] == before[:3]                   # C and both H stay put
+    assert atoms[o] != before[o]                     # the lone O slides in
+
+
+def test_relax_bond_leaves_a_ring_alone():
+    atoms = [["C", 0.0, 0.0, 0.0], ["C", 1.5, 0.0, 0.0], ["C", 0.75, 1.3, 0.0]]
+    bonds = [[0, 1, 1], [1, 2, 1], [2, 0, 1]]
+    before = [list(a) for a in atoms]
+    model.relax_bond(atoms, bonds, 0)
+    assert atoms == before
+
+
+def test_fragment_splits_at_a_bond():
+    atoms, bonds = model.single_atom("C")
+    model.add_bonded_atom(atoms, bonds, 0, "H", 1)
+    c2 = model.add_bonded_atom(atoms, bonds, 0, "C", 1)
+    model.add_bonded_atom(atoms, bonds, c2, "H", 1)
+    assert model.fragment(bonds, c2, 1) == {2, 3}     # across the C–C bond
+    assert model.fragment(bonds, 0, 1) == {0, 1}
+
+
+def test_delete_bond_keeps_atoms():
+    atoms, bonds = model.single_atom("C")
+    model.add_bonded_atom(atoms, bonds, 0, "O", 1)
+    model.delete_bond(bonds, 0)
+    assert bonds == []
+    assert len(atoms) == 2
 
 
 def test_single_atom():

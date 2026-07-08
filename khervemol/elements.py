@@ -142,6 +142,60 @@ VALENCE = {"H": 1, "C": 4, "N": 3, "O": 2, "F": 1, "Cl": 1, "Br": 1,
 #: Elements offered in the 3D viewer's quick Add-atom palette.
 PALETTE = ["H", "C", "N", "O", "F", "P", "S", "Cl", "Br", "I"]
 
+# -------------------------------------------------------------- bond lengths
+#: Single-bond covalent radii in ångström (Cordero et al., Dalton Trans.
+#: 2008, 2832). Summing two of them approximates any A–B single bond.
+COVALENT = {
+    "H": 0.31, "He": 0.28, "Li": 1.28, "Be": 0.96, "B": 0.84, "C": 0.76,
+    "N": 0.71, "O": 0.66, "F": 0.57, "Ne": 0.58, "Na": 1.66, "Mg": 1.41,
+    "Al": 1.21, "Si": 1.11, "P": 1.07, "S": 1.05, "Cl": 1.02, "Ar": 1.06,
+    "K": 2.03, "Ca": 1.76, "Sc": 1.70, "Ti": 1.60, "V": 1.53, "Cr": 1.39,
+    "Mn": 1.39, "Fe": 1.32, "Co": 1.26, "Ni": 1.24, "Cu": 1.32, "Zn": 1.22,
+    "Ga": 1.22, "Ge": 1.20, "As": 1.19, "Se": 1.20, "Br": 1.20, "Kr": 1.16,
+    "Rb": 2.20, "Sr": 1.95, "Y": 1.90, "Zr": 1.75, "Nb": 1.64, "Mo": 1.54,
+    "Tc": 1.47, "Ru": 1.46, "Rh": 1.42, "Pd": 1.39, "Ag": 1.45, "Cd": 1.44,
+    "In": 1.42, "Sn": 1.39, "Sb": 1.39, "Te": 1.38, "I": 1.39, "Xe": 1.40,
+    "Cs": 2.44, "Ba": 2.15, "La": 2.07, "Ce": 2.04, "Pr": 2.03, "Nd": 2.01,
+    "Pm": 1.99, "Sm": 1.98, "Eu": 1.98, "Gd": 1.96, "Tb": 1.94, "Dy": 1.92,
+    "Ho": 1.92, "Er": 1.89, "Tm": 1.90, "Yb": 1.87, "Lu": 1.87, "Hf": 1.75,
+    "Ta": 1.70, "W": 1.62, "Re": 1.51, "Os": 1.44, "Ir": 1.41, "Pt": 1.36,
+    "Au": 1.36, "Hg": 1.32, "Tl": 1.45, "Pb": 1.46, "Bi": 1.48, "Po": 1.40,
+    "At": 1.50, "Rn": 1.50, "Fr": 2.60, "Ra": 2.21, "Ac": 2.15, "Th": 2.06,
+    "Pa": 2.00, "U": 1.96, "Np": 1.90, "Pu": 1.87, "Am": 1.80, "Cm": 1.69,
+    "Bk": 1.68, "Cf": 1.68, "Es": 1.65, "Fm": 1.67, "Md": 1.73, "No": 1.76,
+    "Lr": 1.61, "Rf": 1.57, "Db": 1.49, "Sg": 1.43, "Bh": 1.41, "Hs": 1.34,
+    "Mt": 1.29, "Ds": 1.28, "Rg": 1.21, "Cn": 1.22, "Nh": 1.36, "Fl": 1.43,
+    "Mc": 1.62, "Lv": 1.75, "Ts": 1.65, "Og": 1.57,
+}
+_DEFAULT_COVALENT = 1.50
+
+#: Double / triple bonds are shorter than the single-bond radius sum. Tuned
+#: so C=C → 1.34 Å and C≡C → 1.19 Å fall out of the generic formula.
+_ORDER_SHRINK = {1: 1.00, 2: 0.88, 3: 0.78}
+
+#: Experimental equilibrium lengths (Å) for the pairs a builder actually
+#: meets, keyed ``(lighter symbol, heavier symbol, order)``. These win over
+#: the radius-sum estimate; everything else falls back to it.
+_BOND_LENGTHS = {
+    ("C", "C", 1): 1.54, ("C", "C", 2): 1.34, ("C", "C", 3): 1.20,
+    ("C", "H", 1): 1.09, ("C", "N", 1): 1.47, ("C", "N", 2): 1.28,
+    ("C", "N", 3): 1.16, ("C", "O", 1): 1.43, ("C", "O", 2): 1.23,
+    ("C", "S", 1): 1.82, ("C", "S", 2): 1.60, ("C", "F", 1): 1.35,
+    ("C", "Cl", 1): 1.77, ("Br", "C", 1): 1.94, ("C", "I", 1): 2.14,
+    ("C", "P", 1): 1.84, ("C", "Si", 1): 1.86, ("B", "C", 1): 1.56,
+    ("H", "N", 1): 1.01, ("N", "N", 1): 1.45, ("N", "N", 2): 1.25,
+    ("N", "N", 3): 1.10, ("N", "O", 1): 1.40, ("N", "O", 2): 1.21,
+    ("H", "O", 1): 0.96, ("O", "O", 1): 1.48, ("O", "O", 2): 1.21,
+    ("H", "S", 1): 1.34, ("S", "S", 1): 2.05, ("O", "S", 1): 1.57,
+    ("O", "S", 2): 1.43, ("H", "P", 1): 1.44, ("O", "P", 1): 1.63,
+    ("O", "P", 2): 1.50, ("Cl", "P", 1): 2.04, ("H", "Si", 1): 1.48,
+    ("O", "Si", 1): 1.63, ("B", "H", 1): 1.19, ("B", "O", 1): 1.36,
+    ("B", "N", 1): 1.42, ("H", "H", 1): 0.74, ("F", "H", 1): 0.92,
+    ("Cl", "H", 1): 1.27, ("Br", "H", 1): 1.41, ("H", "I", 1): 1.61,
+    ("F", "F", 1): 1.42, ("Cl", "Cl", 1): 1.99, ("Br", "Br", 1): 2.28,
+    ("I", "I", 1): 2.67,
+}
+
 # ---------------------------------------------------------- table geometry
 #: Each period as a row of 18 symbols (None = a gap in that group). Period 6
 #: and 7 keep La / Ac in group 3; the f-block (Ce..Lu, Th..Lr) sits below.
@@ -208,3 +262,22 @@ def weight(element: str) -> float:
 def text_color(element: str) -> str:
     """Readable ink colour for a chip filled with the element's colour."""
     return "#111" if QColor(color(element)).lightnessF() > 0.5 else "#fff"
+
+
+def covalent_radius(element: str) -> float:
+    return COVALENT.get(element, _DEFAULT_COVALENT)
+
+
+def bond_length(a: str, b: str, order: int = 1) -> float:
+    """Equilibrium length in ångström of an *a*–*b* bond of *order*.
+
+    Looks the pair up in the experimental table (C–O 1.43, C=O 1.23, …) and
+    otherwise estimates it as the covalent-radius sum, shortened for double
+    and triple bonds. Symmetric in *a* and *b*."""
+    order = max(1, min(3, int(order)))
+    key = (a, b) if a <= b else (b, a)
+    exact = _BOND_LENGTHS.get((key[0], key[1], order))
+    if exact is not None:
+        return exact
+    span = covalent_radius(a) + covalent_radius(b)
+    return span * _ORDER_SHRINK[order]
