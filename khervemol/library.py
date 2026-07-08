@@ -16,10 +16,39 @@ the Free Software Foundation, either version 3 of the License, or
 
 import math
 
-from .model import (Molecule, TETRA, add, scale, plus, DEFAULT_AZ,
-                    DEFAULT_EL)
+from .model import (Molecule, TETRA, add, add_bonded_atom, cross, free_valence,
+                    minus, perp, scale, plus, unit, DEFAULT_AZ, DEFAULT_EL)
 
 _add, _scale, _plus = add, scale, plus
+
+
+def _grow(atoms, bonds, anchor, element, order=1):
+    """Bond a new *element* onto *anchor* at a free tetrahedral direction and
+    the real bond length — the same maths the interactive builder uses.
+
+    Always prefer this to hand-written offsets: an atom's remaining bonding
+    directions depend on the bonds it already has, so a hard-coded basis is
+    only right for the *first* centre of a structure."""
+    return add_bonded_atom(atoms, bonds, anchor, element, order)
+
+
+def _fill_h(atoms, bonds, anchor):
+    """Cap every remaining valence on *anchor* with hydrogens."""
+    while free_valence(atoms, bonds, anchor) > 0:
+        _grow(atoms, bonds, anchor, "H")
+
+
+def _sp2_dirs(back, normal):
+    """The two directions 120° either side of *back*, in the plane whose
+    normal is *normal* — a trigonal-planar centre (carbonyl, aromatic)."""
+    side = unit(cross(normal, back))
+    half, sin120 = -0.5, math.sqrt(3.0) / 2.0
+    return ((back[0] * half + side[0] * sin120,
+             back[1] * half + side[1] * sin120,
+             back[2] * half + side[2] * sin120),
+            (back[0] * half - side[0] * sin120,
+             back[1] * half - side[1] * sin120,
+             back[2] * half - side[2] * sin120))
 
 
 # --- small molecules -------------------------------------------------------
@@ -63,46 +92,23 @@ def _mol_water_dimer():
     return _mol_water()
 
 
-def _methyl(atoms, bonds, base_i, base_p, skip_dir):
-    best = max(range(4), key=lambda k: (TETRA[k][0] * skip_dir[0]
-                                        + TETRA[k][1] * skip_dir[1]
-                                        + TETRA[k][2] * skip_dir[2]))
-    for k in range(4):
-        if k == best:
-            continue
-        bonds.append((base_i, _add(atoms, "H",
-                                   _plus(base_p, _scale(TETRA[k], 1.09))), 1))
-
-
 def _mol_methanol():
     atoms, bonds = [], []
-    c = (0.0, 0.0, 0.0)
-    i_c = _add(atoms, "C", c)
-    o = _plus(c, _scale(TETRA[0], 1.43))
-    i_o = _add(atoms, "O", o)
-    bonds.append((i_c, i_o, 1))
-    bonds.append((i_o, _add(atoms, "H", _plus(o, _scale(TETRA[1], 0.96))), 1))
-    _methyl(atoms, bonds, i_c, c, TETRA[0])
+    i_c = _add(atoms, "C", (0.0, 0.0, 0.0))
+    i_o = _grow(atoms, bonds, i_c, "O")
+    _grow(atoms, bonds, i_o, "H")
+    _fill_h(atoms, bonds, i_c)
     return atoms, bonds, None
 
 
 def _mol_ethanol():
     atoms, bonds = [], []
-    c1 = (0.0, 0.0, 0.0)
-    i_c1 = _add(atoms, "C", c1)
-    c2 = _plus(c1, _scale(TETRA[0], 1.54))
-    i_c2 = _add(atoms, "C", c2)
-    bonds.append((i_c1, i_c2, 1))
-    o = _plus(c2, _scale(TETRA[1], 1.43))
-    i_o = _add(atoms, "O", o)
-    bonds.append((i_c2, i_o, 1))
-    bonds.append((i_o, _add(atoms, "H", _plus(o, _scale(TETRA[2], 0.96))), 1))
-    for k in (1, 2, 3):
-        bonds.append((i_c1, _add(atoms, "H",
-                                 _plus(c1, _scale(TETRA[k], 1.09))), 1))
-    for k in (2, 3):
-        bonds.append((i_c2, _add(atoms, "H",
-                                 _plus(c2, _scale(TETRA[k], 1.09))), 1))
+    i_c1 = _add(atoms, "C", (0.0, 0.0, 0.0))
+    i_c2 = _grow(atoms, bonds, i_c1, "C")
+    i_o = _grow(atoms, bonds, i_c2, "O")
+    _grow(atoms, bonds, i_o, "H")
+    _fill_h(atoms, bonds, i_c1)
+    _fill_h(atoms, bonds, i_c2)
     return atoms, bonds, None
 
 
@@ -117,18 +123,17 @@ def _mol_formaldehyde():
 
 def _mol_acetic_acid():
     atoms, bonds = [], []
-    c1 = (0.0, 0.0, 0.0)
-    i_c1 = _add(atoms, "C", c1)
-    c2 = _plus(c1, _scale(TETRA[0], 1.52))
-    i_c2 = _add(atoms, "C", c2)
-    bonds.append((i_c1, i_c2, 1))
-    o_dbl = _plus(c2, (0.0, 1.22, 0.4))
-    bonds.append((i_c2, _add(atoms, "O", o_dbl), 2))
-    o_oh = _plus(c2, (1.30, -0.2, -0.2))
-    i_o = _add(atoms, "O", o_oh)
+    i_c1 = _add(atoms, "C", (0.0, 0.0, 0.0))
+    i_c2 = _grow(atoms, bonds, i_c1, "C")          # the carboxyl carbon
+    c2 = tuple(atoms[i_c2][1:])
+    # sp2: both oxygens 120° off the C–C bond, in one plane
+    back = unit(minus(atoms[i_c1][1:], c2))
+    d_dbl, d_oh = _sp2_dirs(back, perp(back))
+    bonds.append((i_c2, _add(atoms, "O", _plus(c2, _scale(d_dbl, 1.23))), 2))
+    i_o = _add(atoms, "O", _plus(c2, _scale(d_oh, 1.36)))
     bonds.append((i_c2, i_o, 1))
-    bonds.append((i_o, _add(atoms, "H", _plus(o_oh, (0.6, -0.7, 0.0))), 1))
-    _methyl(atoms, bonds, i_c1, c1, TETRA[0])
+    _grow(atoms, bonds, i_o, "H")
+    _fill_h(atoms, bonds, i_c1)
     return atoms, bonds, None
 
 
@@ -162,7 +167,13 @@ def _mol_benzene():
     return atoms, bonds, None
 
 
-def _chair_ring(n, radius, pucker):
+def _chair_ring(n, bond, pucker):
+    """A puckered n-ring whose neighbours sit exactly *bond* apart.
+
+    Alternating ±*pucker* in z; the in-plane radius follows, because for a
+    hexagon the 60° chord equals the radius."""
+    chord = math.sqrt(max(bond * bond - (2 * pucker) ** 2, 0.01))
+    radius = chord / (2 * math.sin(math.pi / n))
     pts = []
     for k in range(n):
         ang = math.radians(90 + k * 360.0 / n)
@@ -173,21 +184,18 @@ def _chair_ring(n, radius, pucker):
 
 def _mol_cyclohexane():
     atoms, bonds = [], []
-    ring = _chair_ring(6, 1.45, 0.35)
+    ring = _chair_ring(6, 1.54, 0.25)
     idx = [_add(atoms, "C", p) for p in ring]
     for k in range(6):
         bonds.append((idx[k], idx[(k + 1) % 6], 1))
-        p = ring[k]
-        d = math.hypot(p[0], p[1]) or 1.0
-        for zc in (0.85, -0.85):
-            hp = (p[0] * (d + 0.7) / d, p[1] * (d + 0.7) / d, p[2] + zc)
-            bonds.append((idx[k], _add(atoms, "H", hp), 1))
+    for i in idx:                       # after the ring closes, so each C
+        _fill_h(atoms, bonds, i)        # sees both its neighbours
     return atoms, bonds, None
 
 
 def _mol_cyclopentane():
     atoms, bonds = [], []
-    ring = _chair_ring(5, 1.30, 0.20)
+    ring = _chair_ring(5, 1.54, 0.20)
     idx = [_add(atoms, "C", p) for p in ring]
     for k in range(5):
         bonds.append((idx[k], idx[(k + 1) % 5], 1))
@@ -196,18 +204,14 @@ def _mol_cyclopentane():
 
 def _mol_glucose():
     atoms, bonds = [], []
-    ring = _chair_ring(6, 1.45, 0.30)
+    ring = _chair_ring(6, 1.50, 0.25)
     els = ["O", "C", "C", "C", "C", "C"]
     idx = [_add(atoms, els[k], ring[k]) for k in range(6)]
     for k in range(6):
         bonds.append((idx[k], idx[(k + 1) % 6], 1))
-    for k in range(1, 6):
-        p = ring[k]
-        d = math.hypot(p[0], p[1]) or 1.0
-        op = (p[0] * (d + 1.4) / d, p[1] * (d + 1.4) / d, p[2] - 0.4)
-        i_o = _add(atoms, "O", op)
-        bonds.append((idx[k], i_o, 1))
-        bonds.append((i_o, _add(atoms, "H", _plus(op, (0.4, 0.4, 0.6))), 1))
+    for k in range(1, 6):               # a hydroxyl on every ring carbon
+        i_o = _grow(atoms, bonds, idx[k], "O")
+        _grow(atoms, bonds, i_o, "H")
     return atoms, bonds, None
 
 
@@ -220,50 +224,60 @@ def _backbone(n, x0=0.0):
     return [(x0 + k * _ZA, (_ZB if k % 2 else 0.0), 0.0) for k in range(n)]
 
 
-def _add_substituent(atoms, bonds, c_i, at, sub):
-    if sub in ("F", "Cl", "Br", "OH"):
-        if sub == "OH":
-            i_o = _add(atoms, "O", at)
-            bonds.append((c_i, i_o, 1))
-            bonds.append((i_o, _add(atoms, "H", _plus(at, (0.4, 0.5, 0.5))), 1))
-        else:
-            bonds.append((c_i, _add(atoms, sub, at), 1))
+_AROMATIC_CC = 1.39
+_AROMATIC_CH = 1.09
+
+
+def _phenyl(atoms, bonds, anchor):
+    """A planar benzene ring bonded to *anchor* through its ipso carbon.
+
+    The ring is a regular hexagon: its centre lies one C–C length beyond the
+    ipso carbon along the anchor→ipso axis, and the ring plane contains that
+    axis. Alternating bond orders leave the ipso carbon exactly full."""
+    ipso = _grow(atoms, bonds, anchor, "C")
+    p = tuple(atoms[ipso][1:])
+    axis = unit(minus(p, atoms[anchor][1:]))
+    centre = _plus(p, _scale(axis, _AROMATIC_CC))
+    side = perp(axis)                       # in-plane, ⟂ to the axis
+    idx = [ipso]
+    for k in range(1, 6):
+        ang = math.radians(60.0 * k)
+        radial = (-math.cos(ang) * axis[0] + math.sin(ang) * side[0],
+                  -math.cos(ang) * axis[1] + math.sin(ang) * side[1],
+                  -math.cos(ang) * axis[2] + math.sin(ang) * side[2])
+        idx.append(_add(atoms, "C", _plus(centre,
+                                          _scale(radial, _AROMATIC_CC))))
+    for k in range(6):
+        bonds.append((idx[k], idx[(k + 1) % 6], 1 if k % 2 == 0 else 2))
+    for i in idx[1:]:                       # H on each ring carbon, in-plane
+        out = unit(minus(atoms[i][1:], centre))
+        bonds.append((i, _add(atoms, "H",
+                              _plus(atoms[i][1:], _scale(out, _AROMATIC_CH))),
+                      1))
+
+
+def _add_substituent(atoms, bonds, c_i, sub):
+    if sub in ("F", "Cl", "Br"):
+        _grow(atoms, bonds, c_i, sub)
+    elif sub == "OH":
+        _grow(atoms, bonds, _grow(atoms, bonds, c_i, "O"), "H")
     elif sub == "CH3":
-        i_m = _add(atoms, "C", at)
-        bonds.append((c_i, i_m, 1))
-        for d in (_plus(at, (0.0, 0.7, 0.7)), _plus(at, (0.7, 0.7, -0.4)),
-                  _plus(at, (-0.7, 0.7, -0.4))):
-            bonds.append((i_m, _add(atoms, "H", d), 1))
+        _fill_h(atoms, bonds, _grow(atoms, bonds, c_i, "C"))
     elif sub == "phenyl":
-        cx, cy, cz = at[0], at[1] + 1.4, at[2] + 0.6
-        idx = []
-        for k in range(6):
-            ang = math.radians(90 + k * 60)
-            idx.append(_add(atoms, "C", (cx + 1.2 * math.cos(ang),
-                                         cy + 1.2 * math.sin(ang), cz)))
-        for k in range(6):
-            bonds.append((idx[k], idx[(k + 1) % 6], 2 if k % 2 == 0 else 1))
-        bonds.append((c_i, idx[0], 1))
+        _phenyl(atoms, bonds, c_i)
 
 
 def _backbone_hydrogens(atoms, bonds, idx, pts, subs=None):
+    """Hang each backbone carbon's substituent and then cap it with hydrogen.
+
+    Directions come from the bonds already on the atom, so the chain ends
+    (one neighbour) take three, the middles (two) take two."""
     subs = subs or {}
-    n = len(pts)
-    for k in range(n):
-        p = pts[k]
-        ty = 0.55 if k % 2 == 0 else -0.55
-        up = (p[0], p[1] + ty, 0.95)
-        dn = (p[0], p[1] + ty, -0.95)
-        if k == 0 or k == n - 1:
-            sign = -1.0 if k == 0 else 1.0
-            ext = (p[0] + sign * 0.9, p[1] - (_ZB if k % 2 else 0.0) * 0.6, 0.0)
-            bonds.append((idx[k], _add(atoms, "H", ext), 1))
+    for k, i in enumerate(idx):
         sub = subs.get(k)
-        if sub is None:
-            bonds.append((idx[k], _add(atoms, "H", up), 1))
-        else:
-            _add_substituent(atoms, bonds, idx[k], up, sub)
-        bonds.append((idx[k], _add(atoms, "H", dn), 1))
+        if sub is not None:
+            _add_substituent(atoms, bonds, i, sub)
+        _fill_h(atoms, bonds, i)
 
 
 def _polymer_atoms(n, pattern):
@@ -312,37 +326,43 @@ def _mol_ethyne():
 
 
 def _mol_pet():
+    """The PET repeat unit, –C(=O)–C₆H₄–C(=O)–O–CH₂–CH₂–O–.
+
+    Drawn as a repeat unit with its two open valences (the acyl carbon and
+    the glycol oxygen), not as a closed macrocycle: bonding the two ends of
+    one unit together would make a cyclic monomer, not the polymer."""
     atoms, bonds = [], []
-    ring = _ring_carbons(6, 1.39)
+    ring = _ring_carbons(6, _AROMATIC_CC)       # centred on the origin
     ridx = [_add(atoms, "C", p) for p in ring]
     for k in range(6):
         bonds.append((ridx[k], ridx[(k + 1) % 6], 2 if k % 2 == 0 else 1))
-    for k in (1, 2, 4, 5):
-        p = ring[k]
-        d = math.hypot(p[0], p[1]) or 1.0
+    for k in (1, 2, 4, 5):                      # aryl hydrogens, in-plane
+        out = unit(ring[k])
         bonds.append((ridx[k], _add(atoms, "H",
-                     (p[0] * (d + 1.0) / d, p[1] * (d + 1.0) / d, 0.0)), 1))
+                                    _plus(ring[k], _scale(out, _AROMATIC_CH))),
+                      1))
 
-    def _ester(anchor_i, base, direction):
-        bx, by = base
-        c = (bx + direction * 1.3, by, 0.0)
+    def _carbonyl(ring_i):
+        """A trigonal C=O hung radially off a ring carbon, in the ring plane.
+        Returns the acyl carbon and its remaining free direction."""
+        p = tuple(atoms[ring_i][1:])
+        out = unit(p)
+        c = _plus(p, _scale(out, 1.49))
         i_c = _add(atoms, "C", c)
-        bonds.append((anchor_i, i_c, 1))
-        bonds.append((i_c, _add(atoms, "O", (c[0], c[1] + 1.15, 0.5)), 2))
-        o1 = (c[0] + direction * 1.2, c[1] - 0.4, 0.0)
-        i_o1 = _add(atoms, "O", o1)
-        bonds.append((i_c, i_o1, 1))
-        ch = (o1[0] + direction * 1.2, o1[1] - 0.6, 0.4)
-        i_ch = _add(atoms, "C", ch)
-        bonds.append((i_o1, i_ch, 1))
-        for hy in (0.7, -0.7):
-            bonds.append((i_ch, _add(atoms, "H",
-                                     (ch[0], ch[1] + 0.4, hy + 0.4)), 1))
-        return i_ch
+        bonds.append((ring_i, i_c, 1))
+        d_dbl, d_free = _sp2_dirs((-out[0], -out[1], -out[2]), (0.0, 0.0, 1.0))
+        bonds.append((i_c, _add(atoms, "O", _plus(c, _scale(d_dbl, 1.23))), 2))
+        return i_c, c, d_free
 
-    ch_a = _ester(ridx[0], (ring[0][0], ring[0][1]), 1)
-    ch_b = _ester(ridx[3], (ring[3][0], ring[3][1]), -1)
-    bonds.append((ch_a, ch_b, 1))
+    _carbonyl(ridx[0])                          # one open end: the acyl carbon
+    i_c, c, d_free = _carbonyl(ridx[3])
+    i_o = _add(atoms, "O", _plus(c, _scale(d_free, 1.34)))
+    bonds.append((i_c, i_o, 1))
+    ch1 = _grow(atoms, bonds, i_o, "C")         # –O–CH₂–
+    ch2 = _grow(atoms, bonds, ch1, "C")         # –CH₂–
+    _grow(atoms, bonds, ch2, "O")               # the other open end
+    _fill_h(atoms, bonds, ch1)
+    _fill_h(atoms, bonds, ch2)
     return atoms, bonds, None
 
 

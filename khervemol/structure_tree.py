@@ -32,14 +32,17 @@ _RING_ROLE = Qt.UserRole + 1            # True on a ring-closure leaf
 
 
 def _root_atom(atoms, bonds):
-    """Start the tree at the most-connected heavy atom — that reads best
-    (a carbon skeleton with its hydrogens hanging off it)."""
+    """Start the tree at the best-connected heavy atom, counting only its
+    heavy neighbours — otherwise a CH₂ (four bonds) would outrank a ring
+    carbon (three), and the backbone would hang off a side group."""
     if not atoms:
         return None
     degree = [0] * len(atoms)
     for i, j, _o in bonds:
-        degree[i] += 1
-        degree[j] += 1
+        if atoms[j][0] != "H":
+            degree[i] += 1
+        if atoms[i][0] != "H":
+            degree[j] += 1
     heavy = [i for i, a in enumerate(atoms) if a[0] != "H"]
     return max(heavy or range(len(atoms)), key=lambda i: (degree[i], -i))
 

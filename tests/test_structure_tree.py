@@ -73,11 +73,24 @@ def test_tree_widget_mirrors_the_molecule(qapp):
     t.set_molecule(library.make("ethanol"))
     root = t.topLevelItem(0)
     assert root.text(0) == "Ethanol"
-    # every atom got a row, and lengths/angles are filled in below the root
-    assert len(t._rows) == 9
-    child = t._rows[1]                          # the second carbon
+    assert len(t._rows) == 9                    # every atom got a row
+    # the tree roots on the best-connected heavy atom: ethanol's middle C,
+    # which carries no bond of its own
+    assert t._rows[1].text(1) == ""
+    child = t._rows[0]                          # the methyl carbon hangs off it
     assert child.text(1) == "–"                 # single bond
     assert child.text(2) == "1.54 Å"
+    oxygen = t._rows[2]
+    assert oxygen.text(2) == "1.43 Å"           # C–O, the real length
+    assert t._rows[3].text(3) == "109.5°"       # C–O–H, a real angle
+
+
+def test_tree_roots_on_the_heavy_skeleton_not_a_side_group(qapp):
+    t = StructureTree()
+    t.set_molecule(library.make("pet"))
+    root_atom = t.topLevelItem(0).child(0)
+    # a CH2 has four bonds but only two heavy ones; an aromatic C wins
+    assert root_atom.text(0).startswith("C0")
 
 
 def test_tree_widget_selection_round_trip(qapp):

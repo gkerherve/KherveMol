@@ -289,6 +289,19 @@ non-editable and get true (unscaled) lattice spacing. `tests/test_library`
 parametrises over `library.names()`, so a new entry is covered
 automatically.
 
+**Never hand-place an sp3 substituent.** An atom's free bonding directions
+depend on the bonds it already carries, so a fixed `TETRA` basis is only
+valid for the *first* centre — reuse it on a neighbour and every
+substituent lands at 70.5° (the supplement of 109.5°) instead. Use
+`_grow(atoms, bonds, anchor, element)` (→ `model.add_bonded_atom`), which
+picks a free tetrahedral direction and the real bond length, and
+`_fill_h(atoms, bonds, anchor)` to cap the rest. Add the backbone/ring
+bonds *first*, so each atom sees its neighbours before its hydrogens are
+grown. Trigonal centres (carbonyl, aromatic) still need explicit geometry:
+`_sp2_dirs(back, normal)` gives the two 120° directions, and `_phenyl`
+builds a planar ring off an anchor. `tests/test_library` asserts no
+built-in molecule has a bond angle under 95° or an over-bonded atom.
+
 ## Persistence policy
 
 **All model/sketch properties must round-trip through the `.kmol` JSON

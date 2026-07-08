@@ -319,6 +319,15 @@ def _perp(v):
     return _unit(_cross(v, ref))
 
 
+def minus(p, q):
+    return (p[0] - q[0], p[1] - q[1], p[2] - q[2])
+
+
+#: Public aliases, for structure builders that need to place sp2 centres or
+#: rings by hand (the sp3 case is `add_bonded_atom`).
+unit, cross, perp = _unit, _cross, _perp
+
+
 # ------------------------------------------------------- interactive builder
 _COS_TET = 1.0 / 3.0                # |cos(109.47°)|
 _SIN_TET = math.sqrt(8.0) / 3.0    # sin(109.47°)
