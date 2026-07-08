@@ -43,7 +43,16 @@ matching 3D model. Both views also have **right-click menus**.
 - **Right-click an atom** — **Bond on** ▸ pick an element to attach it, or
   double/triple-bond it on. Only elements that fit the atom's remaining
   valence are listed; the element selected in the periodic table is offered
-  too.
+  too. The same submenu ends with **Select an atom on screen…**, which lets
+  you click the *other* atom to bond to (Esc cancels).
+- **Bond two atoms that already exist** — click one, **Ctrl+click** the
+  other (it gets a lighter ring), then press **Bond selected** — or
+  right-click either one and choose **Bond C0–C1**. The two are pulled to
+  the correct length: if they are separate fragments, the smaller one slides
+  along the new bond axis, keeping its own geometry; closing a ring moves
+  nothing.
+- **Tab / Shift+Tab** — step the selection from atom to atom, so you can
+  reach an atom hidden behind another.
 - **Delete** — select an atom and press **Delete** (or the button).
 - **Labels** — toggle element symbols on the spheres.
 
@@ -98,6 +107,28 @@ assembled into a 3D model.
   tabs: in the 3D view, select an atom and click the **＋*El*** button (or
   right-click ▸ *Add …*) to bond an atom of **any** element on — not just
   the ten quick buttons. Toggle the dock from **View**.
+
+## Structure outline
+
+The **Structure dock**, above the library, is the current molecule as a
+connectivity tree: its name at the root, then each atom nested under the
+atom it hangs off. An atom with further neighbours reads like a folder, a
+terminal hydrogen like a file — the shape of the tree *is* the shape of the
+molecule.
+
+Each row carries the geometry of the bond that reached it: its **order**
+(– = ≡), its **length** in ångström, and the **bond angle** at the parent
+atom. Hover a row for the atom's atomic number, weight, free valence,
+coordinates and how far its bond sits from the ideal length.
+
+- A bond that closes a **ring** cannot nest (it would loop forever), so it
+  shows as a greyed leaf: *↻ closes ring to C5*.
+- **Disconnected fragments** each get their own branch off the root — which
+  is how you spot two pieces that still need bonding together.
+- Click a row to select that atom in the 3D view; selecting in 3D scrolls
+  the tree to it.
+
+Toggle the dock from **View**.
 
 ## Molecule Explorer
 
@@ -187,3 +218,6 @@ needed.
 | Export PNG | Ctrl+E |
 | User Guide | F1 |
 | Delete selected atom (3D) | Delete |
+| Step the selection (3D) | Tab / Shift+Tab |
+| Add an atom to the selection (3D) | Ctrl+click |
+| Cancel "select an atom on screen" | Esc |

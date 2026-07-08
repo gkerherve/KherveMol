@@ -75,7 +75,10 @@ module and import.
                      bond rather than stretching it), `set_bond_order` /
                      `can_set_bond_order` change an order within valence and
                      `relax_bond` re-lengthens the bond by sliding its
-                     smaller `fragment` (ring bonds are left alone).
+                     smaller `fragment` (ring bonds are left alone), and
+                     `add_bond`/`can_bond` join two *existing* atoms.
+                     `angle(i,j,k)` (degrees, at j) and `bond_between` serve
+                     the structure outline.
   - `library.py`   — built-in structures. `_mol_*` / `_xtal_*` builders
                      return `(atoms, bonds, edges)`; `make(name)` wraps one
                      in a `Molecule`. 30+ entries in `CATEGORIES`: simple
@@ -107,12 +110,35 @@ module and import.
                      Right-click **hit-tests** the scene (`_atom_at` /
                      `_bond_at` over the `_atom` / `_bond` spec tags), parks
                      the result in `hit = (kind, index)` and emits `context`;
-                     `mainwindow._bond_section` / `_atom_section` then build
-                     a bond menu (Single/Double/Triple — valence-gated via
+                     `mainwindow._bond_section` / `_atom_section` /
+                     `_join_section` then build a bond menu
+                     (Single/Double/Triple — valence-gated via
                      `can_set_order` — + Delete bond) or an atom menu
-                     (`bondable` ▸ Bond on / Double- / Triple-bond on).
-                     Crystals are rotatable/zoomable but not atom-editable
-                     (`editable` = not crystal).
+                     (`bondable` ▸ Bond on / Double- / Triple-bond on,
+                     `start_pick` = "Select an atom on screen…").
+                     **Selection is a list** (`selection`, primary = last;
+                     `selected` is a property over it): Ctrl+click toggles an
+                     atom in, Tab/Shift+Tab `step_selection` through the
+                     atoms, and `bond_selected`/`bond_atoms` join two
+                     existing atoms (`can_bond_selected` drives the *Bond
+                     selected* button; `_why_not` explains a refusal).
+                     `start_pick`/`cancel_pick` (Esc) is the click-the-other-
+                     atom mode. Emits `selection_changed` / `molecule_changed`
+                     for the structure outline. Crystals are
+                     rotatable/zoomable but not atom-editable (`editable` =
+                     not crystal).
+  - `structure_tree.py` — `StructureTree(QTreeWidget)`: the molecule as a
+                     folder-like connectivity outline in the **left top**
+                     dock, above the library. `walk(atoms, bonds)` is a DFS
+                     spanning tree yielding `(atom, parent, grandparent,
+                     order, ring)` — heavy atoms before hydrogens, ring
+                     bonds emitted once as leaves (nesting them would loop),
+                     every disconnected fragment rooted off the top. Columns
+                     are Atom / Bond order / Length (Å) / Angle (° at the
+                     parent, from `model.angle`); the tooltip adds Z, weight,
+                     free valence, coordinates and the ideal bond length.
+                     Two-way selection with the viewer (`atom_selected` ↔
+                     `show_atom`, `_quiet` guards the echo).
   - `editor2d.py`  — `Editor2D`: the 2D sketcher, drawn as a **proper
                      skeletal formula** (`_draw_bond`/`_draw_label`: thin
                      bond lines with double/triple parallels, carbons as

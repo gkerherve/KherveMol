@@ -21,6 +21,7 @@ from . import (__version__, catalog, document, elements, help as help_mod,
 from .ai_assistant import AiDock
 from .editor2d import _DND_MIME, Editor2D
 from .explorer import MoleculeExplorer
+from .structure_tree import StructureTree
 from .viewer3d import Viewer3D
 
 
@@ -78,7 +79,22 @@ class MainWindow(QMainWindow):
 
     # --------------------------------------------------------------- docks
     def _build_dock(self):
-        # Left: the molecule / crystal library tree.
+        # Left, top: the current molecule as a connectivity outline.
+        struct_dock = QDockWidget("Structure", self)
+        struct_dock.setAllowedAreas(Qt.LeftDockWidgetArea
+                                    | Qt.RightDockWidgetArea)
+        self.structure = StructureTree()
+        self.structure.atom_selected.connect(self.viewer.select_atom)
+        self.viewer.molecule_changed.connect(
+            lambda: self.structure.set_molecule(self.viewer.mol))
+        self.viewer.structure_changed.connect(self.structure.rebuild)
+        self.viewer.selection_changed.connect(
+            lambda: self.structure.show_atom(self.viewer.selected))
+        struct_dock.setWidget(self.structure)
+        self.addDockWidget(Qt.LeftDockWidgetArea, struct_dock)
+        self._structure_dock = struct_dock
+
+        # Left, below it: the molecule / crystal library tree.
         lib_dock = QDockWidget("Library", self)
         lib_dock.setAllowedAreas(Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea)
         self.tree = _LibraryTree()
@@ -107,6 +123,9 @@ class MainWindow(QMainWindow):
         lib_dock.setWidget(self.tree)
         self.addDockWidget(Qt.LeftDockWidgetArea, lib_dock)
         self._library_dock = lib_dock
+        # Structure on top, library under it — one column, resizable.
+        self.splitDockWidget(struct_dock, lib_dock, Qt.Vertical)
+        self.resizeDocks([struct_dock, lib_dock], [300, 460], Qt.Vertical)
 
         # Bottom: the full periodic table (scrolls if the window is narrow).
         pt_dock = QDockWidget("Periodic table", self)
@@ -221,6 +240,7 @@ class MainWindow(QMainWindow):
         self._act(m_view, "Show 3D View", lambda: self.tabs.setCurrentIndex(0))
         self._act(m_view, "Show 2D Sketch", lambda: self.tabs.setCurrentIndex(1))
         m_view.addSeparator()
+        m_view.addAction(self._structure_dock.toggleViewAction())
         m_view.addAction(self._library_dock.toggleViewAction())
         m_view.addAction(self._ptable_dock.toggleViewAction())
         ai_toggle = self.ai_dock.toggleViewAction()
@@ -506,7 +526,8 @@ class MainWindow(QMainWindow):
         m.addAction("Delete bond", lambda: v.delete_bond(bond_index))
 
     def _atom_section(self, m, atom_index):
-        """Right-clicked a sphere: bond an element onto it, or delete it."""
+        """Right-clicked a sphere: bond an element onto it, join it to another
+        atom already on screen, or delete it."""
         v = self.viewer
         el = v.mol.atoms[atom_index][0]
         free = model.free_valence(v.mol.atoms, v.mol.bonds, atom_index)
@@ -531,7 +552,30 @@ class MainWindow(QMainWindow):
                     f"{active} — {elements.name(active)} (table)",
                     lambda _=False, s=active, o=order: v.bond_element(
                         atom_index, s, o))
+            # …or join it to an atom that's already there
+            sub.addSeparator()
+            sub.addAction(
+                "Select an atom on screen…",
+                lambda _=False, o=order: v.start_pick(atom_index, o))
+        self._join_section(m, atom_index)
         m.addAction("Delete atom", v.delete_selected)
+
+    def _join_section(self, m, atom_index):
+        """'Bond to the other selected atom' — the Ctrl+click / Tab path."""
+        v = self.viewer
+        others = [i for i in v.selection if i != atom_index]
+        if not others:
+            return
+        partner = others[-1]
+        a, b = v.mol.atoms[partner][0], v.mol.atoms[atom_index][0]
+        sub = m.addMenu(f"Bond to {a}{partner} (also selected)")
+        for order, label in ((1, "Single"), (2, "Double"), (3, "Triple")):
+            act = sub.addAction(
+                label, lambda _=False, o=order: v.bond_atoms(partner,
+                                                             atom_index, o))
+            act.setEnabled(model.can_bond(v.mol.atoms, v.mol.bonds, partner,
+                                          atom_index, order))
+        sub.setTitle(f"Bond {a}{partner}–{b}{atom_index}")
 
     def _viewer_menu(self, gpos):
         from .viewer3d import STANDARD_VIEWS
@@ -557,6 +601,8 @@ class MainWindow(QMainWindow):
                 el = self.viewer.active_element
                 m.addAction(f"Add {el} ({elements.name(el)}) atom",
                             self.viewer.add_active)
+                if len(self.viewer.selection) >= 2:
+                    self._join_section(m, self.viewer.selected)
                 if self.viewer.selected is not None:
                     m.addAction("Delete selected atom",
                                 self.viewer.delete_selected)

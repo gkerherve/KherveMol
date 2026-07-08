@@ -72,10 +72,27 @@ single shortens to a C=O double), and orders the two atoms' valences
 cannot carry are greyed out.</li>
 <li><b>Right-click an atom</b> — <i>Bond on</i> ▸ pick an element to
 attach it, or double/triple-bond it on. Only elements that fit the
-remaining valence are offered.</li>
+remaining valence are offered. The submenu ends with <i>Select an atom on
+screen…</i>, which bonds to whichever atom you click next (Esc cancels).</li>
+<li><b>Bond two existing atoms</b> — click one, <b>Ctrl+click</b> the
+other, then <i>Bond selected</i> (or right-click ▸ <i>Bond C0–C1</i>).
+Separate fragments are pulled to the correct bond length, the smaller one
+sliding in with its geometry intact.</li>
+<li><b>Tab / Shift+Tab</b> — step the selection through the atoms, to reach
+one hidden behind another.</li>
 <li><b>Delete</b> — select an atom and press Delete (or the button).</li>
 <li><b>Labels</b> — toggle element symbols on the spheres.</li>
 </ul>
+
+<h3>Structure outline</h3>
+<p>The <b>Structure</b> dock, above the library, shows the molecule as a
+connectivity tree — each atom nested under the atom it hangs off, so an
+atom with neighbours reads like a folder and a terminal hydrogen like a
+file. Every row carries its bond <b>order</b>, <b>length</b> (Å) and the
+<b>bond angle</b> at its parent; hover for coordinates, free valence and
+the ideal length. Ring bonds appear as a leaf (<i>↻ closes ring to C5</i>),
+and disconnected fragments each branch off the root. Click a row to select
+that atom in 3D.</p>
 
 <h3>2D Sketch</h3>
 <p>The sketch mirrors the 3D model automatically, but you can also draw
