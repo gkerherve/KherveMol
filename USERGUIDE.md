@@ -101,6 +101,12 @@ assembled into a 3D model.
   plus homologous series) grouped by family. Built-in models build without
   RDKit; the named compounds build from SMILES (need RDKit). The
   **Explorer** (Ctrl+L) is the same list with search and preview.
+- **Double-click** a leaf to load it, or **drag** it onto either view:
+  - onto the **3D view**, it merges in as a second, unbonded fragment,
+    parked clear of what's already there — then Ctrl+click an atom in each
+    and press **Bond selected** to join them. An empty view (or a crystal)
+    is simply replaced, since a lattice has no room for a guest molecule.
+  - onto the **2D sketch**, it drops where you let go, as a new fragment.
 - The **periodic-table dock** along the bottom shows the whole table (all
   118 elements, CPK-coloured with atomic numbers). Click one to set the
   **active element** (header shows its name, Z and valence). It drives both
@@ -111,10 +117,11 @@ assembled into a 3D model.
 ## Structure outline
 
 The **Structure dock**, above the library, is the current molecule as a
-connectivity tree: its name at the root, then each atom nested under the
-atom it hangs off. An atom with further neighbours reads like a folder, a
-terminal hydrogen like a file — the shape of the tree *is* the shape of the
-molecule.
+connectivity tree: the backbone runs straight down the panel, and everything
+that hangs off it — hydrogens, side groups, ring closures — nests one level
+in. The outline starts at one end of the molecule's longest chain, so a
+straight chain reads as a flat list rather than a staircase, and a branch
+only indents where the molecule actually branches.
 
 Each row carries the geometry of the bond that reached it: its **order**
 (– = ≡), its **length** in ångström, and the **bond angle** at the parent
@@ -127,6 +134,11 @@ coordinates and how far its bond sits from the ideal length.
   is how you spot two pieces that still need bonding together.
 - Click a row to select that atom in the 3D view; selecting in 3D scrolls
   the tree to it.
+- **Drag one row onto another** to re-bond that atom — everything hanging
+  off it comes along, and the fragment swings onto a free direction of its
+  new anchor at the right bond length. Drops that chemistry forbids (onto an
+  atom with no free valence, or onto something that would travel with the
+  atom you're dragging) show a "no" cursor.
 
 Toggle the dock from **View**.
 

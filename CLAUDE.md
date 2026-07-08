@@ -76,9 +76,12 @@ module and import.
                      `can_set_bond_order` change an order within valence and
                      `relax_bond` re-lengthens the bond by sliding its
                      smaller `fragment` (ring bonds are left alone), and
-                     `add_bond`/`can_bond` join two *existing* atoms.
-                     `angle(i,j,k)` (degrees, at j) and `bond_between` serve
-                     the structure outline.
+                     `add_bond`/`can_bond` join two *existing* atoms,
+                     `merge` appends another structure as a clear fragment,
+                     and `reattach`/`can_reattach`/`moving_fragment` unhook
+                     an atom (with everything hanging off it) onto a new
+                     anchor. `angle(i,j,k)` (degrees, at j) and
+                     `bond_between` serve the structure outline.
   - `library.py`   — built-in structures. `_mol_*` / `_xtal_*` builders
                      return `(atoms, bonds, edges)`; `make(name)` wraps one
                      in a `Molecule`. 30+ entries in `CATEGORIES`: simple
@@ -124,21 +127,38 @@ module and import.
                      selected* button; `_why_not` explains a refusal).
                      `start_pick`/`cancel_pick` (Esc) is the click-the-other-
                      atom mode. Emits `selection_changed` / `molecule_changed`
-                     for the structure outline. Crystals are
+                     for the structure outline. Accepts library **drops**
+                     (`dnd.MIME_COMPOUND` → `compound_dropped` →
+                     `MainWindow._on_drop_compound_3d` → `add_molecule`, which
+                     `model.merge`s the compound in as a clear second fragment
+                     — or replaces an empty view / a crystal), and
+                     `reattach` serves the structure tree's drag. Crystals are
                      rotatable/zoomable but not atom-editable (`editable` =
                      not crystal).
+  - `dnd.py`       — drag-and-drop payloads: `MIME_COMPOUND` (a library leaf,
+                     `"kind|value"`, dropped on either view) and `MIME_ATOM`
+                     (a structure-tree row), plus `encode`/`decode`.
   - `structure_tree.py` — `StructureTree(QTreeWidget)`: the molecule as a
-                     folder-like connectivity outline in the **left top**
-                     dock, above the library. `walk(atoms, bonds)` is a DFS
-                     spanning tree yielding `(atom, parent, grandparent,
-                     order, ring)` — heavy atoms before hydrogens, ring
-                     bonds emitted once as leaves (nesting them would loop),
-                     every disconnected fragment rooted off the top. Columns
-                     are Atom / Bond order / Length (Å) / Angle (° at the
-                     parent, from `model.angle`); the tooltip adds Z, weight,
-                     free valence, coordinates and the ideal bond length.
-                     Two-way selection with the viewer (`atom_selected` ↔
-                     `show_atom`, `_quiet` guards the echo).
+                     connectivity outline in the **left top** dock, above the
+                     library. `walk(atoms, bonds)` is a DFS spanning tree
+                     yielding `(atom, parent, grandparent, order, ring)` —
+                     heavy atoms before hydrogens, ring bonds emitted once as
+                     leaves (nesting them would loop), every disconnected
+                     fragment rooted off the top. `_root_atom` starts at an
+                     endpoint of the heavy-atom **diameter** and
+                     `_continuations` renders each atom's biggest child at the
+                     *same* indent, so a backbone is a flat list and only real
+                     branches nest (a chain used to stair-step off the panel).
+                     Columns are Atom / Bond order / Length (Å) / Angle (° at
+                     the parent, from `model.angle`); the tooltip adds Z,
+                     weight, free valence, coordinates and the ideal bond
+                     length. Two-way selection with the viewer
+                     (`atom_selected` ↔ `show_atom`, `_quiet` guards the
+                     echo). **Dragging a row onto another** re-bonds that atom
+                     (`can_drop` gates the drag with `model.can_reattach`, so
+                     an impossible drop shows a "no" cursor; the drop emits
+                     `reattach_requested` → `MainWindow._on_reattach` →
+                     `Viewer3D.reattach`). Qt never reorders rows itself.
   - `editor2d.py`  — `Editor2D`: the 2D sketcher, drawn as a **proper
                      skeletal formula** (`_draw_bond`/`_draw_label`: thin
                      bond lines with double/triple parallels, carbons as

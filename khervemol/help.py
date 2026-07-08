@@ -86,13 +86,26 @@ one hidden behind another.</li>
 
 <h3>Structure outline</h3>
 <p>The <b>Structure</b> dock, above the library, shows the molecule as a
-connectivity tree — each atom nested under the atom it hangs off, so an
-atom with neighbours reads like a folder and a terminal hydrogen like a
-file. Every row carries its bond <b>order</b>, <b>length</b> (Å) and the
-<b>bond angle</b> at its parent; hover for coordinates, free valence and
-the ideal length. Ring bonds appear as a leaf (<i>↻ closes ring to C5</i>),
-and disconnected fragments each branch off the root. Click a row to select
-that atom in 3D.</p>
+connectivity tree. The backbone runs straight down the panel and only real
+branches indent — hydrogens, side groups and ring closures nest under the
+atom they hang off. Every row carries its bond <b>order</b>, <b>length</b>
+(Å) and the <b>bond angle</b> at its parent; hover for coordinates, free
+valence and the ideal length. Ring bonds appear as a leaf (<i>↻ closes ring
+to C5</i>), and disconnected fragments each branch off the root.</p>
+<ul>
+<li>Click a row to select that atom in 3D, and vice versa.</li>
+<li><b>Drag a row onto another</b> to re-bond that atom — everything
+hanging off it comes along and swings onto a free direction of the new
+anchor. Chemically impossible drops show a "no" cursor.</li>
+</ul>
+
+<h3>Dragging from the library</h3>
+<p>Double-click a library leaf to load it, or <b>drag</b> it onto either
+view. Dropped on the <b>3D view</b> it merges in as a second, unbonded
+fragment parked clear of the current structure — Ctrl+click an atom in each
+and press <i>Bond selected</i> to join them. Dropped on the <b>2D
+sketch</b> it lands where you let go. An empty 3D view, or a crystal, is
+replaced rather than merged.</p>
 
 <h3>2D Sketch</h3>
 <p>The sketch mirrors the 3D model automatically, but you can also draw
