@@ -29,7 +29,7 @@ from PyQt5.QtWidgets import (QComboBox, QGraphicsEllipseItem, QGraphicsScene,
                              QGraphicsView, QHBoxLayout, QLabel, QPushButton,
                              QSlider, QToolButton, QVBoxLayout, QWidget)
 
-from . import elements, icons, model, render
+from . import dnd, elements, icons, model, render
 
 _HALF = math.pi / 2.0
 _W = 400.0                               # preview model-box size (scene units)
@@ -65,6 +65,7 @@ class _View(QGraphicsView):
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.setFocusPolicy(Qt.StrongFocus)     # so Tab reaches keyPressEvent
+        self.setAcceptDrops(True)               # drop compounds from the library
         self._press = None
         self._press_atom = None
         self._mode = None               # None | "orbit" | "drag"
@@ -152,6 +153,22 @@ class _View(QGraphicsView):
             o.hit = ("bond", bond) if bond is not None else (None, -1)
         o.context.emit(event.globalPos())
 
+    # ------------------------------------------- drop a compound from the library
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasFormat(dnd.MIME_COMPOUND):
+            event.acceptProposedAction()
+
+    def dragMoveEvent(self, event):
+        if event.mimeData().hasFormat(dnd.MIME_COMPOUND):
+            event.acceptProposedAction()
+
+    def dropEvent(self, event):
+        if not event.mimeData().hasFormat(dnd.MIME_COMPOUND):
+            return
+        kind, value = dnd.decode(event.mimeData().data(dnd.MIME_COMPOUND))
+        self._o.compound_dropped.emit(kind, value)
+        event.acceptProposedAction()
+
     def event(self, e):
         """Tab normally moves focus out of the view — claim it instead, so it
         can step the selection from atom to atom."""
@@ -233,6 +250,7 @@ class Viewer3D(QWidget):
     context = pyqtSignal(object)            # global QPoint of a right-click
     selection_changed = pyqtSignal()        # the selected atom(s) changed
     molecule_changed = pyqtSignal()         # a different structure was loaded
+    compound_dropped = pyqtSignal(str, str)  # a library leaf was dropped here
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -375,6 +393,23 @@ class Viewer3D(QWidget):
         self.molecule_changed.emit()
         self.selection_changed.emit()
 
+    def add_molecule(self, mol):
+        """Merge another structure in as a separate fragment (a library drop).
+
+        An empty view, or a crystal, is simply replaced — a lattice has no
+        room for a loose molecule."""
+        if self.mol.crystal or mol.crystal or not self.mol.atoms:
+            self.set_molecule(mol)
+            return
+        base = model.merge(self.mol.atoms, self.mol.bonds, mol.atoms, mol.bonds)
+        self.mol.name = "custom"
+        self.mol.label = f"{self.mol.label} + {mol.label}"
+        self.selection = [base]
+        self.view.rebuild()
+        self._update_status()
+        self.structure_changed.emit()
+        self.selection_changed.emit()
+
     def set_active_element(self, el):
         """Set the element the ＋ button / right-click 'Add' adds (driven by
         the periodic-table dock), so any element can be built, not just the
@@ -493,6 +528,35 @@ class Viewer3D(QWidget):
         self._update_status()
         self.structure_changed.emit()
         self.selection_changed.emit()
+
+    def reattach(self, atom, parent, anchor, order=1):
+        """Unhook *atom* from *parent* and re-bond it to *anchor*, bringing
+        everything that hangs off it along. Drives the structure tree's drag."""
+        if not self.editable:
+            return False
+        old = None if parent is None else model.bond_between(self.mol.bonds,
+                                                             atom, parent)
+        if not model.reattach(self.mol.atoms, self.mol.bonds, atom, old,
+                              anchor, order):
+            self.status.setText(self._why_not_reattach(atom, old, anchor,
+                                                       order))
+            return False
+        self.selection = [atom]
+        self.view.rebuild()
+        self._update_status()
+        self.structure_changed.emit()
+        self.selection_changed.emit()
+        return True
+
+    def _why_not_reattach(self, atom, old, anchor, order):
+        atoms = self.mol.atoms
+        a, b = atoms[atom][0], atoms[anchor][0]
+        if anchor in model.moving_fragment(self.mol.bonds, atom, old):
+            return (f"{b}{anchor} hangs off {a}{atom} — it would move with it. "
+                    "Drop onto an atom on the other side of the bond.")
+        if model.free_valence(atoms, self.mol.bonds, anchor) < order:
+            return f"No free valence on {b} (atom {anchor})."
+        return f"Cannot bond {a}{atom} to {b}{anchor}."
 
     def _why_not(self, i, j, order):
         atoms = self.mol.atoms

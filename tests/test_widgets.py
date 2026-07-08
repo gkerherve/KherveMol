@@ -174,6 +174,115 @@ def test_pick_an_atom_on_screen_to_bond_it(qapp):
     assert model.bond_between(v.mol.bonds, c1, c2) is None
 
 
+def _drop(widget, mime, payload, pos=None):
+    """Deliver a real drag-enter + drop through the widget's viewport."""
+    from PyQt5.QtCore import QMimeData, QPoint, Qt
+    from PyQt5.QtGui import QDragEnterEvent, QDropEvent
+    from PyQt5.QtWidgets import QApplication
+    md = QMimeData()
+    md.setData(mime, payload)
+    pos = pos or QPoint(60, 60)
+    target = widget.viewport() if hasattr(widget, "viewport") else widget
+    enter = QDragEnterEvent(pos, Qt.CopyAction, md, Qt.LeftButton, Qt.NoModifier)
+    QApplication.sendEvent(target, enter)
+    drop = QDropEvent(pos, Qt.CopyAction, md, Qt.LeftButton, Qt.NoModifier)
+    QApplication.sendEvent(target, drop)
+    return enter.isAccepted(), drop.isAccepted()
+
+
+def test_library_leaf_offers_a_draggable_payload(qapp):
+    from PyQt5.QtCore import Qt
+    from khervemol import dnd
+    from khervemol.mainwindow import MainWindow
+    w = MainWindow()
+
+    def first_leaf(item):
+        for k in range(item.childCount()):
+            child = item.child(k)
+            if child.data(0, Qt.UserRole):
+                return child
+            found = first_leaf(child)
+            if found:
+                return found
+    leaf = first_leaf(w.tree.topLevelItem(0))
+    assert leaf.flags() & Qt.ItemIsDragEnabled
+    md = w.tree.mimeData([leaf])
+    assert md.formats() == [dnd.MIME_COMPOUND]
+    assert dnd.decode(md.data(dnd.MIME_COMPOUND))[0] == "model"
+
+
+def test_drop_a_library_compound_on_the_3d_view(qapp):
+    from khervemol import dnd, model
+    from khervemol.mainwindow import MainWindow
+    w = MainWindow()
+    w.viewer.set_molecule(library.make("methane"))
+    before = len(w.viewer.mol.atoms)
+    enter, drop = _drop(w.viewer.view, dnd.MIME_COMPOUND,
+                        dnd.encode("model", "water"))
+    assert enter and drop
+    # water merged in as a second, unbonded fragment
+    assert len(w.viewer.mol.atoms) == before + 3
+    assert w.viewer.mol.formula() == "CH6O"
+    frag = model.fragment(w.viewer.mol.bonds, before, -1)
+    assert len(frag) == 3 and not frag & set(range(before))
+
+
+def test_drop_on_an_empty_3d_view_loads_the_compound(qapp):
+    from khervemol import dnd, model
+    from khervemol.mainwindow import MainWindow
+    w = MainWindow()
+    w.viewer.set_molecule(model.Molecule(name="empty"))
+    _drop(w.viewer.view, dnd.MIME_COMPOUND, dnd.encode("model", "benzene"))
+    assert w.viewer.mol.name == "benzene"
+    # a crystal is replaced, never merged — a lattice has no room for a guest
+    w.viewer.set_molecule(library.make("nacl"))
+    _drop(w.viewer.view, dnd.MIME_COMPOUND, dnd.encode("model", "water"))
+    assert w.viewer.mol.name == "water" and not w.viewer.mol.crystal
+
+
+def test_drop_a_library_compound_on_the_2d_canvas(qapp):
+    from khervemol import dnd
+    from khervemol.mainwindow import MainWindow
+    w = MainWindow()
+    before = len(w.sketch.atoms)
+    enter, drop = _drop(w.sketch.canvas, dnd.MIME_COMPOUND,
+                        dnd.encode("model", "water"))
+    assert enter and drop
+    assert len(w.sketch.atoms) == before + 1        # the O (H are implicit)
+    assert w.tabs.currentIndex() == 1               # and it shows you the tab
+
+
+def test_drag_a_tree_row_onto_another_rebonds_it(qapp):
+    from khervemol import model
+    from khervemol.mainwindow import MainWindow
+    w = MainWindow()
+    atoms, bonds = model.single_atom("C")
+    c1 = model.add_bonded_atom(atoms, bonds, 0, "C", 1)
+    c2 = model.add_bonded_atom(atoms, bonds, c1, "C", 1)
+    w.viewer.set_molecule(model.Molecule(atoms=atoms, bonds=bonds, name="c3"))
+    # the outline roots on one end of the chain; drag the *other* end across
+    moving = next(a for a in (0, c2) if w.structure.parent_of(a) is not None)
+    anchor = c2 if moving == 0 else 0
+    assert w.structure.parent_of(moving) == c1
+    w.structure.reattach_requested.emit(moving, anchor)
+    assert model.bond_between(w.viewer.mol.bonds, moving, c1) is None
+    assert model.bond_between(w.viewer.mol.bonds, moving, anchor) is not None
+    assert abs(model.distance(w.viewer.mol.atoms, moving, anchor) - 1.54) < 1e-9
+    assert w.viewer.selected == moving
+
+
+def test_tree_drag_refuses_an_impossible_drop(qapp):
+    from khervemol import model
+    from khervemol.mainwindow import MainWindow
+    w = MainWindow()
+    w.viewer.set_molecule(library.make("methane"))
+    hs = [i for i, a in enumerate(w.viewer.mol.atoms) if a[0] == "H"]
+    before = [list(b) for b in w.viewer.mol.bonds]
+    w.structure.reattach_requested.emit(hs[0], hs[1])   # H has no free valence
+    assert w.viewer.mol.bonds == before
+    assert "No free valence" in w.viewer.status.text()
+
+
 def test_bond_specs_are_tagged_for_hit_testing(qapp):
     v = Viewer3D()
     _methanol_ish(v)

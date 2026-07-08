@@ -597,6 +597,79 @@ def delete_bond(bonds, bond_index):
     bonds.pop(bond_index)
 
 
+# ------------------------------------------------------- merging / reattaching
+def merge(atoms, bonds, new_atoms, new_bonds, gap=2.0):
+    """Append another structure as a separate fragment, clear of this one.
+
+    The incoming atoms are shifted so their bounding box sits *gap* ångström
+    to the right of the existing one. Returns the new atoms' index offset."""
+    base = len(atoms)
+    dx = dy = dz = 0.0
+    if atoms and new_atoms:
+        dx = (max(a[1] for a in atoms) - min(a[1] for a in new_atoms)) + gap
+        dy = (_centroid(atoms)[1]
+              - sum(a[2] for a in new_atoms) / len(new_atoms))
+        dz = (_centroid(atoms)[2]
+              - sum(a[3] for a in new_atoms) / len(new_atoms))
+    for a in new_atoms:
+        atoms.append([a[0], a[1] + dx, a[2] + dy, a[3] + dz])
+    for i, j, o in new_bonds:
+        bonds.append([i + base, j + base, o])
+    return base
+
+
+def translate(atoms, indices, delta):
+    for k in indices:
+        atoms[k][1] += delta[0]
+        atoms[k][2] += delta[1]
+        atoms[k][3] += delta[2]
+
+
+def moving_fragment(bonds, atom, old_bond):
+    """The atoms that would travel with *atom* if bond *old_bond* were cut."""
+    return fragment(bonds, atom, -1 if old_bond is None else old_bond)
+
+
+def can_reattach(atoms, bonds, atom, old_bond, anchor, order=1):
+    """True if *atom* (with the fragment hanging off it) can be unhooked from
+    bond *old_bond* and re-bonded to *anchor* instead."""
+    if atom == anchor or not 0 <= anchor < len(atoms):
+        return False
+    if old_bond is not None and anchor in bonds[old_bond][:2]:
+        return False                    # that is the bond we are replacing
+    # The anchor must not travel with the atom: it would be bonding a
+    # fragment to itself. (A second bond between the two — a ring — leaves
+    # the anchor reachable without crossing *old_bond*, so this catches it.)
+    if anchor in moving_fragment(bonds, atom, old_bond):
+        return False
+    freed = bonds[old_bond][2] if old_bond is not None else 0
+    return (free_valence(atoms, bonds, atom) + freed >= order
+            and free_valence(atoms, bonds, anchor) >= order)
+
+
+def reattach(atoms, bonds, atom, old_bond, anchor, order=1):
+    """Move *atom* — and everything hanging off it — onto a new *anchor*.
+
+    Breaks bond *old_bond* (the one to its current parent), then swings the
+    whole fragment so *atom* lands on a free tetrahedral direction of the
+    anchor, at the right bond length. Returns success."""
+    if not can_reattach(atoms, bonds, atom, old_bond, anchor, order):
+        return False
+    moving = moving_fragment(bonds, atom, old_bond)
+    if old_bond is not None:
+        bonds.pop(old_bond)
+    d = _free_direction(atoms, bonds, anchor)
+    length = _bond_length(atoms[anchor][0], atoms[atom][0], order)
+    target = (atoms[anchor][1] + d[0] * length,
+              atoms[anchor][2] + d[1] * length,
+              atoms[anchor][3] + d[2] * length)
+    translate(atoms, moving, (target[0] - atoms[atom][1],
+                              target[1] - atoms[atom][2],
+                              target[2] - atoms[atom][3]))
+    bonds.append([anchor, atom, order])
+    return True
+
+
 # ----------------------------------------------------------------- container
 class Molecule:
     """An editable structure plus its current 3D view.

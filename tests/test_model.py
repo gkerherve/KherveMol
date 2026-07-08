@@ -137,6 +137,64 @@ def test_add_bond_closing_a_ring_leaves_geometry_alone():
     assert len(bonds) == 3
 
 
+def test_merge_appends_a_clear_fragment():
+    atoms = [["C", 0.0, 0.0, 0.0], ["H", 1.09, 0.0, 0.0]]
+    bonds = [[0, 1, 1]]
+    base = model.merge(atoms, bonds, [["O", 0.0, 0.0, 0.0],
+                                      ["H", 0.96, 0.0, 0.0]], [[0, 1, 1]])
+    assert base == 2 and len(atoms) == 4
+    assert bonds == [[0, 1, 1], [2, 3, 1]]          # re-indexed
+    # the incoming fragment keeps its shape and is clear of the first
+    assert model.distance(atoms, 2, 3) == pytest.approx(0.96)
+    assert min(a[1] for a in atoms[2:]) > max(a[1] for a in atoms[:2])
+
+
+def test_reattach_moves_an_atom_and_its_fragment():
+    # propane-ish: C0–C1–C2, with an H on C2
+    atoms, bonds = model.single_atom("C")
+    c1 = model.add_bonded_atom(atoms, bonds, 0, "C", 1)
+    c2 = model.add_bonded_atom(atoms, bonds, c1, "C", 1)
+    h = model.add_bonded_atom(atoms, bonds, c2, "H", 1)
+    old = model.bond_between(bonds, c2, c1)
+    assert model.can_reattach(atoms, bonds, c2, old, 0)
+    assert model.reattach(atoms, bonds, c2, old, 0)
+    assert model.bond_between(bonds, c2, c1) is None
+    assert model.bond_between(bonds, c2, 0) is not None
+    assert model.distance(atoms, 0, c2) == pytest.approx(1.54, abs=1e-6)
+    # the H came along, still bonded and still at the right length
+    assert model.bond_between(bonds, c2, h) is not None
+    assert model.distance(atoms, c2, h) == pytest.approx(1.09, abs=1e-6)
+
+
+def test_reattach_refuses_to_bond_a_fragment_to_itself():
+    atoms, bonds = model.single_atom("C")
+    c1 = model.add_bonded_atom(atoms, bonds, 0, "C", 1)
+    c2 = model.add_bonded_atom(atoms, bonds, c1, "C", 1)
+    old = model.bond_between(bonds, c1, 0)
+    # dropping C1 onto C2 — but C2 hangs off C1, so it would travel with it
+    assert not model.can_reattach(atoms, bonds, c1, old, c2)
+    assert not model.reattach(atoms, bonds, c1, old, c2)
+    assert len(bonds) == 2                          # nothing was broken
+
+
+def test_reattach_refuses_without_free_valence():
+    atoms, bonds = model.single_atom("C")
+    o = model.add_bonded_atom(atoms, bonds, 0, "O", 1)
+    model.add_bonded_atom(atoms, bonds, o, "H", 1)  # the O is now full
+    h = model.add_bonded_atom(atoms, bonds, 0, "H", 1)
+    old = model.bond_between(bonds, h, 0)
+    assert not model.reattach(atoms, bonds, h, old, o)
+    assert model.bond_between(bonds, h, 0) is not None   # still where it was
+
+
+def test_reattach_without_a_parent_just_bonds():
+    atoms = [["C", 0.0, 0.0, 0.0], ["C", 9.0, 0.0, 0.0]]
+    bonds = []
+    assert model.reattach(atoms, bonds, 1, None, 0)
+    assert bonds == [[0, 1, 1]]
+    assert model.distance(atoms, 0, 1) == pytest.approx(1.54, abs=1e-6)
+
+
 def test_delete_bond_keeps_atoms():
     atoms, bonds = model.single_atom("C")
     model.add_bonded_atom(atoms, bonds, 0, "O", 1)

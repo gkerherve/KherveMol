@@ -33,7 +33,7 @@ from PyQt5.QtWidgets import (QButtonGroup, QComboBox, QGraphicsScene,
                              QGraphicsView, QHBoxLayout, QLabel, QPushButton,
                              QToolButton, QVBoxLayout, QWidget)
 
-from . import elements
+from . import dnd, elements
 
 _HIT = 15.0             # px pick radius for atoms
 _BOND_LEN = 46.0        # default new-bond length
@@ -42,7 +42,7 @@ _MULTI_GAP = 4.5        # perpendicular offset between double/triple lines
 _LABEL_R = 10.0         # halo radius behind a drawn atom label
 
 #: MIME type for dragging a library compound onto the canvas ("kind|value").
-_DND_MIME = "application/x-khervemol-compound"
+_DND_MIME = dnd.MIME_COMPOUND
 
 
 class _Canvas(QGraphicsView):
@@ -199,8 +199,9 @@ class _Canvas(QGraphicsView):
             event.acceptProposedAction()
 
     def dropEvent(self, event):
-        raw = bytes(event.mimeData().data(_DND_MIME)).decode("utf-8")
-        kind, _, value = raw.partition("|")
+        if not event.mimeData().hasFormat(_DND_MIME):
+            return
+        kind, value = dnd.decode(event.mimeData().data(_DND_MIME))
         sp = self.mapToScene(event.pos())
         self._o.molecule_dropped.emit(kind, value, sp.x(), sp.y())
         event.acceptProposedAction()

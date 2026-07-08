@@ -16,28 +16,31 @@ from PyQt5.QtWidgets import (QAction, QActionGroup, QApplication, QDockWidget,
                              QMessageBox, QScrollArea, QTabWidget, QTreeWidget,
                              QTreeWidgetItem)
 
-from . import (__version__, catalog, document, elements, help as help_mod,
+from . import (__version__, catalog, dnd, document, elements, help as help_mod,
                icons, library, model, periodic, rdkit_io, style, svgexport)
 from .ai_assistant import AiDock
-from .editor2d import _DND_MIME, Editor2D
+from .editor2d import Editor2D
 from .explorer import MoleculeExplorer
 from .structure_tree import StructureTree
 from .viewer3d import Viewer3D
 
 
 class _LibraryTree(QTreeWidget):
-    """Tree whose leaves can be dragged onto the 2D canvas to drop that
-    compound in as a new molecule fragment."""
+    """Tree whose leaves can be dragged onto either view — the 3D viewer
+    merges the compound in as a fragment, the 2D canvas drops it where you
+    let go."""
 
     def mimeData(self, items):
         md = QMimeData()
         for it in items:
             data = it.data(0, Qt.UserRole)
             if data:
-                md.setData(_DND_MIME,
-                           f"{data[0]}|{data[1]}".encode("utf-8"))
+                md.setData(dnd.MIME_COMPOUND, dnd.encode(data[0], data[1]))
                 break
         return md
+
+    def startDrag(self, actions):
+        super().startDrag(Qt.CopyAction)
 
 
 class MainWindow(QMainWindow):
@@ -65,6 +68,7 @@ class MainWindow(QMainWindow):
         self.sketch.changed.connect(self._on_sketch_changed)
         self.sketch.context_requested.connect(self._sketch_menu)
         self.sketch.molecule_dropped.connect(self._on_drop_molecule)
+        self.viewer.compound_dropped.connect(self._on_drop_compound_3d)
 
         self._build_dock()
         self._build_ai_dock()
@@ -85,6 +89,7 @@ class MainWindow(QMainWindow):
                                     | Qt.RightDockWidgetArea)
         self.structure = StructureTree()
         self.structure.atom_selected.connect(self.viewer.select_atom)
+        self.structure.reattach_requested.connect(self._on_reattach)
         self.viewer.molecule_changed.connect(
             lambda: self.structure.set_molecule(self.viewer.mol))
         self.viewer.structure_changed.connect(self.structure.rebuild)
@@ -368,6 +373,43 @@ class MainWindow(QMainWindow):
             return (a2, b2) if a2 else None
         except Exception:                           # noqa: BLE001
             return None
+
+    def _on_reattach(self, atom, anchor):
+        """A row was dragged onto another in the structure tree."""
+        parent = self.structure.parent_of(atom)
+        if self.viewer.reattach(atom, parent, anchor):
+            a = self.viewer.mol.atoms[atom][0]
+            b = self.viewer.mol.atoms[anchor][0]
+            self.statusBar().showMessage(f"Re-bonded {a}{atom} onto "
+                                         f"{b}{anchor}.")
+        else:
+            self.statusBar().showMessage(self.viewer.status.text())
+
+    def _compound_3d(self, kind, value):
+        """The 3D `Molecule` for a library entry, or None (SMILES compound
+        without RDKit)."""
+        if kind == "model":
+            return library.make(value)
+        if not rdkit_io.available():
+            return None
+        try:
+            return rdkit_io.molecule_from_smiles(value)
+        except Exception:                           # noqa: BLE001
+            return None
+
+    def _on_drop_compound_3d(self, kind, value):
+        mol = self._compound_3d(kind, value)
+        if mol is None:
+            self.statusBar().showMessage(
+                "Install RDKit to build named compounds in 3D.")
+            return
+        merging = bool(self.viewer.mol.atoms) and not self.viewer.mol.crystal \
+            and not mol.crystal
+        self.viewer.add_molecule(mol)
+        self.statusBar().showMessage(
+            f"Added {mol.label} as a second fragment — Ctrl+click an atom in "
+            "each and press Bond selected to join them."
+            if merging else f"Loaded {mol.label}.")
 
     def _on_drop_molecule(self, kind, value, x, y):
         result = self._compound_2d(kind, value)
