@@ -95,6 +95,48 @@ def test_fragment_splits_at_a_bond():
     assert model.fragment(bonds, 0, 1) == {0, 1}
 
 
+def test_angle_and_bond_between():
+    atoms = [["O", 0.0, 0.0, 0.0], ["H", 1.0, 0.0, 0.0], ["H", 0.0, 1.0, 0.0]]
+    bonds = [[0, 1, 1], [0, 2, 1]]
+    assert model.angle(atoms, 1, 0, 2) == pytest.approx(90.0)
+    assert model.angle(atoms, 2, 0, 1) == pytest.approx(90.0)   # symmetric
+    assert model.bond_between(bonds, 2, 0) == 1
+    assert model.bond_between(bonds, 1, 2) is None
+
+
+def test_add_bond_joins_two_fragments_at_the_right_length():
+    # two methyl-ish fragments, far apart and unbonded
+    atoms = [["C", 0.0, 0.0, 0.0], ["H", 1.09, 0.0, 0.0],
+             ["C", 9.0, 0.0, 0.0], ["H", 10.09, 0.0, 0.0]]
+    bonds = [[0, 1, 1], [2, 3, 1]]
+    assert model.can_bond(atoms, bonds, 0, 2, 1)
+    assert model.add_bond(atoms, bonds, 0, 2, 1)
+    assert model.distance(atoms, 0, 2) == pytest.approx(1.54, abs=1e-6)
+    # the moved fragment kept its own geometry
+    assert model.distance(atoms, 2, 3) == pytest.approx(1.09, abs=1e-6)
+    # …and cannot be bonded twice
+    assert not model.can_bond(atoms, bonds, 0, 2, 1)
+    assert not model.add_bond(atoms, bonds, 2, 0, 1)
+
+
+def test_add_bond_refuses_without_free_valence():
+    atoms, bonds = model.single_atom("O")
+    a = model.add_bonded_atom(atoms, bonds, 0, "H", 1)
+    b = model.add_bonded_atom(atoms, bonds, 0, "H", 1)
+    assert not model.can_bond(atoms, bonds, a, b, 1)     # both H are full
+    assert not model.add_bond(atoms, bonds, a, b, 1)
+    assert len(bonds) == 2
+
+
+def test_add_bond_closing_a_ring_leaves_geometry_alone():
+    atoms = [["C", 0.0, 0.0, 0.0], ["C", 1.5, 0.0, 0.0], ["C", 0.75, 1.3, 0.0]]
+    bonds = [[0, 1, 1], [1, 2, 1]]
+    before = [list(a) for a in atoms]
+    assert model.add_bond(atoms, bonds, 2, 0, 1)         # closes the ring
+    assert atoms == before
+    assert len(bonds) == 3
+
+
 def test_delete_bond_keeps_atoms():
     atoms, bonds = model.single_atom("C")
     model.add_bonded_atom(atoms, bonds, 0, "O", 1)

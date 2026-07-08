@@ -102,6 +102,78 @@ def test_drag_holds_bond_lengths_when_locked(qapp):
     assert abs(model.distance(v.mol.atoms, 0, 1) - 1.43) < 1e-3
 
 
+def _two_fragments(v):
+    """Ethanol with its C–C bond cut — two loose pieces, as on screen."""
+    from khervemol import model
+    v.set_molecule(library.make("ethanol"))
+    cs = [i for i, a in enumerate(v.mol.atoms) if a[0] == "C"]
+    v.delete_bond(model.bond_between(v.mol.bonds, *cs))
+    return cs
+
+
+def test_ctrl_select_then_bond_the_two_carbons(qapp):
+    from khervemol import model
+    v = Viewer3D()
+    c1, c2 = _two_fragments(v)
+    v.select_atom(c1)
+    v.select_atom(c2, toggle=True)             # Ctrl+click
+    assert v.selection == [c1, c2]
+    assert v.selected == c2                    # last clicked is primary
+    assert v.can_bond_selected(1) and v.join_btn.isEnabled()
+    v.bond_selected(1)
+    assert model.bond_between(v.mol.bonds, c1, c2) is not None
+    assert abs(model.distance(v.mol.atoms, c1, c2) - 1.54) < 1e-9
+    # ctrl+clicking a selected atom again drops it
+    v.select_atom(c1)
+    v.select_atom(c2, toggle=True)
+    v.select_atom(c2, toggle=True)
+    assert v.selection == [c1]
+
+
+def test_bond_selected_refuses_and_explains(qapp):
+    v = Viewer3D()
+    v.set_molecule(library.make("methane"))    # C is full, H are full
+    v.select_atom(1)
+    v.select_atom(2, toggle=True)
+    assert not v.can_bond_selected(1)
+    v.bond_selected(1)
+    assert len(v.mol.bonds) == 4               # nothing added
+    assert "No free valence" in v.status.text()
+
+
+def test_tab_steps_the_selection(qapp):
+    v = Viewer3D()
+    v.set_molecule(library.make("methane"))
+    v.selected = None
+    v.step_selection(1)
+    assert v.selected == 0
+    v.step_selection(1)
+    assert v.selected == 1
+    v.step_selection(-1)
+    assert v.selected == 0
+    v.step_selection(-1)                       # wraps around
+    assert v.selected == len(v.mol.atoms) - 1
+    assert len(v.selection) == 1               # Tab replaces, never extends
+
+
+def test_pick_an_atom_on_screen_to_bond_it(qapp):
+    from khervemol import model
+    v = Viewer3D()
+    c1, c2 = _two_fragments(v)
+    v.start_pick(c1, 1)
+    assert v.picking and "Esc to cancel" in v.status.text()
+    v.select_atom(c2)                          # the pick click
+    assert not v.picking
+    assert model.bond_between(v.mol.bonds, c1, c2) is not None
+    # Esc leaves pick mode without bonding
+    c1, c2 = _two_fragments(v)
+    v.start_pick(c1, 1)
+    v.cancel_pick()
+    assert not v.picking
+    v.select_atom(c2)
+    assert model.bond_between(v.mol.bonds, c1, c2) is None
+
+
 def test_bond_specs_are_tagged_for_hit_testing(qapp):
     v = Viewer3D()
     _methanol_ish(v)

@@ -347,6 +347,24 @@ def distance(atoms, i, j):
                   atoms[j][3] - atoms[i][3]))
 
 
+def angle(atoms, i, j, k):
+    """The i–j–k bond angle in degrees, measured at the middle atom *j*."""
+    u = _unit((atoms[i][1] - atoms[j][1], atoms[i][2] - atoms[j][2],
+               atoms[i][3] - atoms[j][3]))
+    v = _unit((atoms[k][1] - atoms[j][1], atoms[k][2] - atoms[j][2],
+               atoms[k][3] - atoms[j][3]))
+    dot = max(-1.0, min(1.0, u[0] * v[0] + u[1] * v[1] + u[2] * v[2]))
+    return math.degrees(math.acos(dot))
+
+
+def bond_between(bonds, i, j):
+    """Index of the bond joining *i* and *j*, or None."""
+    for bi, (a, b, _o) in enumerate(bonds):
+        if {a, b} == {i, j}:
+            return bi
+    return None
+
+
 def used_valence(bonds, index):
     """Bonds already on atom *index* (summing bond orders)."""
     return sum(o for i, j, o in bonds if index in (i, j))
@@ -522,6 +540,26 @@ def relax_bond(atoms, bonds, bond_index):
         atoms[k][1] += v[0] / d * delta * sign
         atoms[k][2] += v[1] / d * delta * sign
         atoms[k][3] += v[2] / d * delta * sign
+
+
+def can_bond(atoms, bonds, i, j, order=1):
+    """True if atoms *i* and *j* may be joined by a bond of *order* — they
+    are distinct, not already bonded, and both have the free valence."""
+    if i == j or bond_between(bonds, i, j) is not None:
+        return False
+    return all(free_valence(atoms, bonds, k) >= order for k in (i, j))
+
+
+def add_bond(atoms, bonds, i, j, order=1):
+    """Bond two *existing* atoms, then pull them to the right length.
+
+    Joining two separate fragments slides the smaller one along the new bond
+    axis; closing a ring leaves the geometry alone. Returns success."""
+    if not can_bond(atoms, bonds, i, j, order):
+        return False
+    bonds.append([i, j, order])
+    relax_bond(atoms, bonds, len(bonds) - 1)
+    return True
 
 
 def can_set_bond_order(atoms, bonds, bond_index, order):

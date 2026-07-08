@@ -23,7 +23,7 @@ the Free Software Foundation, either version 3 of the License, or
 
 import math
 
-from PyQt5.QtCore import QRectF, QSize, Qt, pyqtSignal
+from PyQt5.QtCore import QEvent, QRectF, QSize, Qt, pyqtSignal
 from PyQt5.QtGui import QColor, QPainter, QPen
 from PyQt5.QtWidgets import (QComboBox, QGraphicsEllipseItem, QGraphicsScene,
                              QGraphicsView, QHBoxLayout, QLabel, QPushButton,
@@ -41,11 +41,16 @@ STANDARD_VIEWS = [
 ]
 
 
+_SEL_COLOR = "#159c74"                   # the primary (last-clicked) atom
+_CO_SEL_COLOR = "#7fbf3f"                # other Ctrl-selected atoms
+
+
 class _View(QGraphicsView):
     """Renders the model. Drag empty space to orbit; drag a sphere to move
-    that atom; click a sphere to select it; wheel to zoom."""
+    that atom; click a sphere to select it (Ctrl+click to add it to the
+    selection); Tab steps through the atoms; wheel to zoom."""
 
-    atom_clicked = pyqtSignal(int)          # atom index, or -1 for empty
+    atom_clicked = pyqtSignal(int, bool)    # atom index (-1 = empty), toggle?
     rotated = pyqtSignal()
     atom_moved = pyqtSignal()
 
@@ -59,6 +64,7 @@ class _View(QGraphicsView):
         self.setFrameShape(QGraphicsView.NoFrame)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        self.setFocusPolicy(Qt.StrongFocus)     # so Tab reaches keyPressEvent
         self._press = None
         self._press_atom = None
         self._mode = None               # None | "orbit" | "drag"
@@ -70,7 +76,7 @@ class _View(QGraphicsView):
         scene = self.scene()
         scene.clear()
         specs = o.render_specs(_W, _W, frozen=self._frozen)
-        sel_item = None
+        sel_items = {}
         for spec in specs:
             item = render.spec_to_item(spec)
             if item is None:
@@ -78,14 +84,16 @@ class _View(QGraphicsView):
             scene.addItem(item)
             if "_atom" in spec:
                 item.setData(0, spec["_atom"])
-                if spec["_atom"] == o.selected:
-                    sel_item = item
+                if spec["_atom"] in o.selection:
+                    sel_items[spec["_atom"]] = item
             elif "_bond" in spec:
                 item.setData(1, spec["_bond"])
-        if sel_item is not None:
-            r = sel_item.sceneBoundingRect().adjusted(-3, -3, 3, 3)
+        for idx, item in sel_items.items():
+            primary = idx == o.selected
+            r = item.sceneBoundingRect().adjusted(-3, -3, 3, 3)
             ring = QGraphicsEllipseItem(r)
-            ring.setPen(QPen(QColor("#159c74"), 3))
+            ring.setPen(QPen(QColor(_SEL_COLOR if primary else _CO_SEL_COLOR),
+                             3 if primary else 2))
             scene.addItem(ring)
         if self._frozen is None:
             src = scene.itemsBoundingRect().adjusted(-10, -10, 10, 10)
@@ -135,15 +143,36 @@ class _View(QGraphicsView):
         atom = self._atom_at(event.pos())
         if atom is not None:
             o.hit = ("atom", atom)
-            o.select_atom(atom)
+            # Right-clicking an already-selected atom keeps the rest of the
+            # selection (so "bond to the other selected atom" stays on the
+            # menu); right-clicking a fresh one selects just it.
+            o.make_primary(atom) if atom in o.selection else o.select_atom(atom)
         else:
             bond = self._bond_at(event.pos())
             o.hit = ("bond", bond) if bond is not None else (None, -1)
         o.context.emit(event.globalPos())
 
+    def event(self, e):
+        """Tab normally moves focus out of the view — claim it instead, so it
+        can step the selection from atom to atom."""
+        if e.type() == QEvent.KeyPress and e.key() in (Qt.Key_Tab,
+                                                       Qt.Key_Backtab):
+            back = (e.key() == Qt.Key_Backtab
+                    or e.modifiers() & Qt.ShiftModifier)
+            self._o.step_selection(-1 if back else 1)
+            return True
+        return super().event(e)
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Escape:
+            self._o.cancel_pick()
+        else:
+            super().keyPressEvent(event)
+
     def mousePressEvent(self, event):
         if event.button() != Qt.LeftButton:
             return
+        self.setFocus(Qt.MouseFocusReason)
         self._press = event.pos()
         self._press_atom = self._atom_at(event.pos())
         self._mode = None
@@ -185,8 +214,9 @@ class _View(QGraphicsView):
             self.rebuild()
             self.atom_moved.emit()
         elif self._mode is None and self._press is not None:
-            self.atom_clicked.emit(self._press_atom if self._press_atom
-                                   is not None else -1)
+            index = self._press_atom if self._press_atom is not None else -1
+            toggle = bool(event.modifiers() & Qt.ControlModifier)
+            self.atom_clicked.emit(index, toggle)
         self._press = None
         self._mode = None
 
@@ -201,13 +231,18 @@ class Viewer3D(QWidget):
     structure_changed = pyqtSignal()        # atoms/bonds edited
     view_changed = pyqtSignal()             # orientation/bond-length changed
     context = pyqtSignal(object)            # global QPoint of a right-click
+    selection_changed = pyqtSignal()        # the selected atom(s) changed
+    molecule_changed = pyqtSignal()         # a different structure was loaded
 
     def __init__(self, parent=None):
         super().__init__(parent)
         self.mol = model.Molecule(name="empty")
-        self.selected = None
+        #: Ordered atom indices; the last one is the "primary" selection.
+        #: Ctrl+click adds to it, Tab steps it, two atoms can be bonded.
+        self.selection = []
         self.order = 1
         self.hit = (None, -1)           # what the last right-click landed on
+        self._pick = None               # (anchor, order) while picking on screen
 
         self.view = _View(self)
         self.view.atom_clicked.connect(self._on_atom_clicked)
@@ -305,6 +340,13 @@ class Viewer3D(QWidget):
         self.order_combo.currentIndexChanged.connect(
             lambda i: setattr(self, "order", i + 1))
         row.addWidget(self.order_combo)
+        # Bond two atoms that already exist: Ctrl+click both, then this.
+        self.join_btn = QPushButton("Bond selected")
+        self.join_btn.setToolTip(
+            "Bond the two selected atoms (Ctrl+click a second atom, or Tab "
+            "to step the selection)")
+        self.join_btn.clicked.connect(lambda: self.bond_selected(self.order))
+        row.addWidget(self.join_btn)
         self.del_btn = QPushButton("Delete atom")
         self.del_btn.clicked.connect(self.delete_selected)
         row.addWidget(self.del_btn)
@@ -326,9 +368,12 @@ class Viewer3D(QWidget):
             btn.setEnabled(editable)
         self.add_active_btn.setEnabled(editable)
         self.order_combo.setEnabled(editable)
+        self.join_btn.setEnabled(editable)
         self.del_btn.setEnabled(editable)
         self._update_status()
         self.view.rebuild()
+        self.molecule_changed.emit()
+        self.selection_changed.emit()
 
     def set_active_element(self, el):
         """Set the element the ＋ button / right-click 'Add' adds (driven by
@@ -369,13 +414,119 @@ class Viewer3D(QWidget):
         self.view.rebuild()
         self.view_changed.emit()
 
-    def _on_atom_clicked(self, index):
-        self.selected = None if index < 0 else index
+    # ------------------------------------------------------------- selection
+    @property
+    def selected(self):
+        """The primary selected atom (the last one clicked), or None."""
+        return self.selection[-1] if self.selection else None
+
+    @selected.setter
+    def selected(self, index):
+        self.selection = [] if index is None else [int(index)]
+
+    def _on_atom_clicked(self, index, toggle=False):
+        if index >= 0 and self._pick is not None:
+            anchor, order = self._pick
+            self.cancel_pick()
+            self.bond_atoms(anchor, index, order)
+            return
+        if index < 0:
+            self.cancel_pick()
+            self.selection = []
+        elif not toggle:
+            self.selection = [index]
+        elif index in self.selection:               # Ctrl+click again → drop
+            self.selection.remove(index)
+        else:
+            self.selection.append(index)
         self._update_status()
         self.view.rebuild()
+        self.selection_changed.emit()
 
-    def select_atom(self, index):
-        self._on_atom_clicked(-1 if index is None else index)
+    def select_atom(self, index, toggle=False):
+        self._on_atom_clicked(-1 if index is None else index, toggle)
+
+    def make_primary(self, index):
+        """Move an already-selected atom to the end (the primary slot)."""
+        if index not in self.selection:
+            return
+        self.selection.remove(index)
+        self.selection.append(index)
+        self._update_status()
+        self.view.rebuild()
+        self.selection_changed.emit()
+
+    def step_selection(self, delta):
+        """Tab / Shift+Tab: walk the primary selection through the atoms."""
+        if not self.mol.atoms:
+            return
+        n = len(self.mol.atoms)
+        start = self.selected
+        nxt = 0 if start is None else (start + delta) % n
+        self.selection = [nxt]
+        self._update_status()
+        self.view.rebuild()
+        self.selection_changed.emit()
+
+    # ------------------------------------------------- bond two chosen atoms
+    def can_bond_selected(self, order=1):
+        return (self.editable and len(self.selection) >= 2
+                and model.can_bond(self.mol.atoms, self.mol.bonds,
+                                   self.selection[-2], self.selection[-1],
+                                   order))
+
+    def bond_selected(self, order=1):
+        """Join the last two selected atoms — the Ctrl+click path."""
+        if len(self.selection) < 2:
+            return
+        self.bond_atoms(self.selection[-2], self.selection[-1], order)
+
+    def bond_atoms(self, i, j, order=1):
+        """Bond two existing atoms, reporting why not if it can't be done."""
+        if not self.editable:
+            return
+        if not model.add_bond(self.mol.atoms, self.mol.bonds, i, j, order):
+            self.status.setText(self._why_not(i, j, order))
+            return
+        self.selection = [j]
+        self.view.rebuild()
+        self._update_status()
+        self.structure_changed.emit()
+        self.selection_changed.emit()
+
+    def _why_not(self, i, j, order):
+        atoms = self.mol.atoms
+        if i == j:
+            return "Pick two different atoms to bond."
+        if model.bond_between(self.mol.bonds, i, j) is not None:
+            return (f"{atoms[i][0]} and {atoms[j][0]} are already bonded — "
+                    "right-click the bond to change its order.")
+        short = [f"{atoms[k][0]} (atom {k})" for k in (i, j)
+                 if model.free_valence(atoms, self.mol.bonds, k) < order]
+        return (f"No free valence on {' and '.join(short)} — delete an atom "
+                "from it first.")
+
+    def start_pick(self, anchor, order=1):
+        """Enter 'click the other atom' mode, bonding it to *anchor*."""
+        if not self.editable:
+            return
+        self._pick = (anchor, order)
+        self.view.setCursor(Qt.CrossCursor)
+        kind = {1: "bond", 2: "double bond", 3: "triple bond"}[order]
+        self.status.setText(
+            f"Click the atom to {kind} to {self.mol.atoms[anchor][0]} "
+            f"(atom {anchor}) — Esc to cancel.")
+
+    def cancel_pick(self):
+        if self._pick is None:
+            return
+        self._pick = None
+        self.view.unsetCursor()
+        self._update_status()
+
+    @property
+    def picking(self):
+        return self._pick is not None
 
     def _on_atom_moved(self):
         self._update_status()
@@ -500,23 +651,41 @@ class Viewer3D(QWidget):
                 or len(self.mol.atoms) <= 1:
             return
         model.delete_atom(self.mol.atoms, self.mol.bonds, self.selected)
-        self.selected = None
+        self.selected = None            # the other indices have shifted
         self._update_status()
         self.view.rebuild()
         self.structure_changed.emit()
+        self.selection_changed.emit()
 
     def keyPressEvent(self, event):
         if event.key() in (Qt.Key_Delete, Qt.Key_Backspace):
             self.delete_selected()
+        elif event.key() == Qt.Key_Escape:
+            self.cancel_pick()
         else:
             super().keyPressEvent(event)
 
     def _update_status(self):
         formula = self.mol.formula()
         head = f"{self.mol.label}   [{formula}]" if formula else self.mol.label
+        if hasattr(self, "join_btn"):
+            self.join_btn.setEnabled(self.can_bond_selected(self.order))
         if not self.editable:
             self.status.setText(f"{head} — drag to rotate, wheel to zoom "
                                 "(fixed lattice).")
+            return
+        if len(self.selection) >= 2:
+            i, j = self.selection[-2], self.selection[-1]
+            a, b = self.mol.atoms[i][0], self.mol.atoms[j][0]
+            n = len(self.selection)
+            extra = f" ({n} atoms selected)" if n > 2 else ""
+            if self.can_bond_selected(self.order):
+                d = model.distance(self.mol.atoms, i, j)
+                self.status.setText(
+                    f"{head} — {a} (atom {i}) + {b} (atom {j}){extra}: "
+                    f"{d:.2f} Å apart. Bond selected to join them.")
+            else:
+                self.status.setText(f"{head} — {self._why_not(i, j, self.order)}")
             return
         if self.selected is not None and self.selected < len(self.mol.atoms):
             el = self.mol.atoms[self.selected][0]
@@ -526,7 +695,9 @@ class Viewer3D(QWidget):
             avail = (f"{free} of {total} bonds free — click an element to add"
                      if free > 0 else f"full ({total} bonds)")
             self.status.setText(f"{head} — selected {el} (atom "
-                                f"{self.selected}): {avail}.")
+                                f"{self.selected}): {avail}. Ctrl+click "
+                                "another atom to bond the two.")
         else:
-            self.status.setText(f"{head} — click an atom to select, drag it "
-                                "to bend, drag background to rotate.")
+            self.status.setText(f"{head} — click an atom to select (Tab steps "
+                                "through them), drag it to bend, drag "
+                                "background to rotate.")
