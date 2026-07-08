@@ -61,7 +61,18 @@ Isometric).</li>
 element in the <i>Add atom</i> palette to bond a new atom on. The builder
 respects each element's valence and refuses to over-bond. Pick the bond
 order (single/double/triple) first.</li>
-<li><b>Bend</b> — drag a selected atom to adjust a bond angle.</li>
+<li><b>Bend</b> — drag a selected atom to adjust a bond angle. With
+<i>Lock lengths</i> on (the default) every bond is held at its real
+chemical length (C–O 1.43 Å, C=O 1.23 Å, C–H 1.09 Å …), so the bond
+swings around rather than stretching; the status line reads out the live
+lengths. Untick it to move an atom freely.</li>
+<li><b>Right-click a bond</b> — set it <i>Single</i> / <i>Double</i> /
+<i>Triple</i>, or delete it. The bond is re-lengthened to match (a C–O
+single shortens to a C=O double), and orders the two atoms' valences
+cannot carry are greyed out.</li>
+<li><b>Right-click an atom</b> — <i>Bond on</i> ▸ pick an element to
+attach it, or double/triple-bond it on. Only elements that fit the
+remaining valence are offered.</li>
 <li><b>Delete</b> — select an atom and press Delete (or the button).</li>
 <li><b>Labels</b> — toggle element symbols on the spheres.</li>
 </ul>

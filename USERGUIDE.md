@@ -31,7 +31,19 @@ matching 3D model. Both views also have **right-click menus**.
   element in the **Add atom** palette to bond a new atom on. The builder
   respects each element's valence and refuses to over-bond. Choose the
   bond order (single / double / triple) first.
-- **Bend** — drag a selected atom to adjust a bond angle.
+- **Bend** — drag a selected atom to adjust a bond angle. With **Lock
+  lengths** on (the default) every bond is held at its real chemical length
+  — C–O 1.43 Å, C=O 1.23 Å, C–H 1.09 Å, C≡N 1.16 Å … — so dragging swings
+  the bond around instead of stretching it, and the status line reads out
+  the live lengths. Untick it to move an atom freely.
+- **Right-click a bond** — set it **Single** / **Double** / **Triple**, or
+  delete it. The bond is re-lengthened to match (a C–O single contracts to
+  a C=O double, pulling the smaller side of the molecule with it). Orders
+  neither atom has the free valence for are greyed out.
+- **Right-click an atom** — **Bond on** ▸ pick an element to attach it, or
+  double/triple-bond it on. Only elements that fit the atom's remaining
+  valence are listed; the element selected in the periodic table is offered
+  too.
 - **Delete** — select an atom and press **Delete** (or the button).
 - **Labels** — toggle element symbols on the spheres.
 

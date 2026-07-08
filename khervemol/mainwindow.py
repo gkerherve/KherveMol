@@ -490,9 +490,59 @@ class MainWindow(QMainWindow):
         PropertiesDialog(self.viewer.mol, self).exec_()
 
     # ------------------------------------------------------- context menus
+    def _bond_section(self, m, bond_index):
+        """Right-clicked a stick: set its order, or cut it."""
+        v = self.viewer
+        head = m.addAction(f"Bond  {v.bond_label(bond_index)}")
+        head.setEnabled(False)
+        current = v.mol.bonds[bond_index][2]
+        for order, label in ((1, "Single"), (2, "Double"), (3, "Triple")):
+            act = m.addAction(
+                label, lambda _=False, o=order: v.set_bond_order(bond_index, o))
+            act.setCheckable(True)
+            act.setChecked(order == current)
+            act.setEnabled(v.can_set_order(bond_index, order))
+        m.addSeparator()
+        m.addAction("Delete bond", lambda: v.delete_bond(bond_index))
+
+    def _atom_section(self, m, atom_index):
+        """Right-clicked a sphere: bond an element onto it, or delete it."""
+        v = self.viewer
+        el = v.mol.atoms[atom_index][0]
+        free = model.free_valence(v.mol.atoms, v.mol.bonds, atom_index)
+        head = m.addAction(f"Atom  {el} ({elements.name(el)}) — "
+                           f"{free} free of {elements.valence(el)}")
+        head.setEnabled(False)
+        for order, label in ((1, "Bond on"), (2, "Double-bond on"),
+                             (3, "Triple-bond on")):
+            options = v.bondable(atom_index, order)
+            if not options:
+                continue
+            sub = m.addMenu(label)
+            for sym in options:
+                sub.addAction(
+                    f"{sym} — {elements.name(sym)}",
+                    lambda _=False, s=sym, o=order: v.bond_element(
+                        atom_index, s, o))
+            active = v.active_element
+            if active not in options and elements.valence(active) >= order:
+                sub.addSeparator()
+                sub.addAction(
+                    f"{active} — {elements.name(active)} (table)",
+                    lambda _=False, s=active, o=order: v.bond_element(
+                        atom_index, s, o))
+        m.addAction("Delete atom", v.delete_selected)
+
     def _viewer_menu(self, gpos):
         from .viewer3d import STANDARD_VIEWS
         m = QMenu(self)
+        kind, index = self.viewer.hit
+        if self.viewer.editable and kind == "bond":
+            self._bond_section(m, index)
+            m.addSeparator()
+        elif self.viewer.editable and kind == "atom":
+            self._atom_section(m, index)
+            m.addSeparator()
         views = m.addMenu("View from")
         for title, az, el in STANDARD_VIEWS:
             views.addAction(
@@ -500,11 +550,16 @@ class MainWindow(QMainWindow):
         m.addAction("Reset zoom", self.viewer.view.reset_zoom)
         m.addAction("Toggle labels", self.viewer.labels_btn.toggle)
         if self.viewer.editable:
-            el = self.viewer.active_element
-            m.addAction(f"Add {el} ({elements.name(el)}) atom",
-                        self.viewer.add_active)
-            if self.viewer.selected is not None:
-                m.addAction("Delete selected atom", self.viewer.delete_selected)
+            lock = m.addAction("Lock bond lengths", self.viewer.lock_btn.toggle)
+            lock.setCheckable(True)
+            lock.setChecked(self.viewer.lock_lengths)
+            if kind is None:
+                el = self.viewer.active_element
+                m.addAction(f"Add {el} ({elements.name(el)}) atom",
+                            self.viewer.add_active)
+                if self.viewer.selected is not None:
+                    m.addAction("Delete selected atom",
+                                self.viewer.delete_selected)
         m.addSeparator()
         m.addAction("Properties…", self.show_properties)
         if rdkit_io.available():

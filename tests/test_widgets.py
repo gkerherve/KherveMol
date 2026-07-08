@@ -54,6 +54,64 @@ def test_viewer_crystal_not_editable(qapp):
     assert not v.editable
 
 
+def _methanol_ish(v):
+    from khervemol import model
+    v.set_molecule(model.Molecule(atoms=[["C", 0.0, 0.0, 0.0]], name="c"))
+    v._on_atom_clicked(0)
+    v.order = 1
+    v.add_element("O")                         # C–O, atom 1
+
+
+def test_viewer_bond_order_menu_ops(qapp):
+    from khervemol import model
+    v = Viewer3D()
+    _methanol_ish(v)
+    assert v.bond_label(0).startswith("C–O")
+    assert v.can_set_order(0, 2)
+    v.set_bond_order(0, 2)                     # C=O, and it shortens
+    assert v.mol.bonds[0][2] == 2
+    assert v.bond_label(0).startswith("C=O")
+    assert model.distance(v.mol.atoms, 0, 1) == 1.23
+    # O has valence 2 — the triple is offered but disabled, and refused
+    assert not v.can_set_order(0, 3)
+    v.set_bond_order(0, 3)
+    assert v.mol.bonds[0][2] == 2
+    v.delete_bond(0)
+    assert v.mol.bonds == [] and len(v.mol.atoms) == 2
+
+
+def test_viewer_bond_element_from_context_menu(qapp):
+    v = Viewer3D()
+    _methanol_ish(v)
+    # the O is full at order 2 but has one free valence for a single bond
+    assert "H" in v.bondable(1, 1)
+    assert v.bondable(1, 2) == []
+    v.bond_element(1, "H", 1)
+    assert v.mol.atoms[-1][0] == "H"
+    assert [1, 2, 1] in v.mol.bonds
+    assert v.order == 1                        # the combo's order is restored
+
+
+def test_drag_holds_bond_lengths_when_locked(qapp):
+    from khervemol import model
+    v = Viewer3D()
+    _methanol_ish(v)
+    assert v.lock_lengths                      # on by default
+    model.drag_atom(v.mol.atoms, 1, 300.0, 120.0, v.mol.az, v.mol.el,
+                    v.mol.bond, 1.0, bonds=v.mol.bonds)
+    assert abs(model.distance(v.mol.atoms, 0, 1) - 1.43) < 1e-3
+
+
+def test_bond_specs_are_tagged_for_hit_testing(qapp):
+    v = Viewer3D()
+    _methanol_ish(v)
+    specs = v.render_specs(400, 400)
+    assert any(s.get("_bond") == 0 for s in specs)
+    assert any(s.get("_atom") == 1 for s in specs)
+    # export specs stay untagged
+    assert not any("_bond" in s for s in v.export_specs())
+
+
 def test_editor2d_draw_and_bond(qapp):
     e = Editor2D()
     e.set_structure([["C", 0, 0], ["O", 50, 0]], [])

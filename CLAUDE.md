@@ -48,19 +48,34 @@ module and import.
                      common elements (with sensible defaults for the rest),
                      `VALENCE`, the 3D quick `PALETTE`, and `table_cells()`
                      yielding `(symbol, row, col)` for the classic wide
-                     table (f-block below). `color/radius/valence/name/
-                     number/text_color` accessors fall back gracefully.
+                     table (f-block below). Also the **bond-length** data:
+                     Cordero `COVALENT` radii (all 118) plus a
+                     `_BOND_LENGTHS` table of experimental pair lengths,
+                     behind `bond_length(a, b, order)` — C–O 1.43 Å,
+                     C=O 1.23 Å, C≡N 1.16 Å; unlisted pairs fall back to the
+                     radius sum shrunk by bond order. `color/radius/valence/
+                     name/number/text_color` fall back gracefully.
   - `model.py`     — the geometry **engine**. Isometric `_proj`, the
                      depth-sorted `_model(atoms, bonds, edges, ...)` that
                      turns 3D coordinates into **shape specs** (circles =
                      lit spheres via a `sun` gradient, lines = sticks,
-                     dashed lines = cell diagonals), `atom_specs`/
-                     `bond_specs`, layout capture (`fit_params`) and
-                     `drag_atom`, plus the interactive-builder ops
-                     (`add_bonded_atom` respecting valence, `delete_atom`,
-                     `free_valence`) and the `Molecule` container
-                     (atoms `[el,x,y,z]`, bonds `[i,j,order]`, optional
-                     crystal `edges`, view az/el/bond, `formula()`).
+                     dashed lines = cell diagonals; bond sticks carry a
+                     `_bond` tag when `tag_atoms`, for hit-testing),
+                     `atom_specs`/`bond_specs`, layout capture
+                     (`fit_params`) and `drag_atom`, plus the
+                     interactive-builder ops (`add_bonded_atom` respecting
+                     valence *and* placing the atom at its real bond length,
+                     `delete_atom`, `free_valence`) and the `Molecule`
+                     container (atoms `[el,x,y,z]`, bonds `[i,j,order]`,
+                     optional crystal `edges`, view az/el/bond, `formula()`).
+                     **Bond geometry is chemistry, not free-hand**:
+                     `constrain_atom` re-projects a dragged atom onto every
+                     neighbour's ideal length (alternating projections;
+                     `drag_atom(..., bonds=…)` calls it, so a drag swings a
+                     bond rather than stretching it), `set_bond_order` /
+                     `can_set_bond_order` change an order within valence and
+                     `relax_bond` re-lengthens the bond by sliding its
+                     smaller `fragment` (ring bonds are left alone).
   - `library.py`   — built-in structures. `_mol_*` / `_xtal_*` builders
                      return `(atoms, bonds, edges)`; `make(name)` wraps one
                      in a `Molecule`. 30+ entries in `CATEGORIES`: simple
@@ -80,14 +95,24 @@ module and import.
                      the model, orbits on background-drag (az/el), zooms on
                      wheel, drags an atom to bend a bond, clicks to select.
                      Surrounding controls: view-cube toolbar, bond-length
-                     slider, labels toggle, Add-atom palette + bond-order
-                     combo + delete. A **＋active-element** button
+                     slider, labels toggle, **Lock lengths** toggle
+                     (`lock_lengths`, on by default — the drag then feeds
+                     `model.drag_atom(bonds=…)` so bonds keep their real
+                     length and `show_geometry` reads them out live),
+                     Add-atom palette + bond-order combo + delete. A
+                     **＋active-element** button
                      (`set_active_element`/`add_active`) bonds on *any*
                      element chosen in the periodic-table dock (not just the
-                     10 quick buttons); also on the right-click menu. Emits
-                     `context` on right-click. Crystals are
-                     rotatable/zoomable but not atom-editable (`editable` =
-                     not crystal).
+                     10 quick buttons); also on the right-click menu.
+                     Right-click **hit-tests** the scene (`_atom_at` /
+                     `_bond_at` over the `_atom` / `_bond` spec tags), parks
+                     the result in `hit = (kind, index)` and emits `context`;
+                     `mainwindow._bond_section` / `_atom_section` then build
+                     a bond menu (Single/Double/Triple — valence-gated via
+                     `can_set_order` — + Delete bond) or an atom menu
+                     (`bondable` ▸ Bond on / Double- / Triple-bond on).
+                     Crystals are rotatable/zoomable but not atom-editable
+                     (`editable` = not crystal).
   - `editor2d.py`  — `Editor2D`: the 2D sketcher, drawn as a **proper
                      skeletal formula** (`_draw_bond`/`_draw_label`: thin
                      bond lines with double/triple parallels, carbons as

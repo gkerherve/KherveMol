@@ -80,6 +80,8 @@ class _View(QGraphicsView):
                 item.setData(0, spec["_atom"])
                 if spec["_atom"] == o.selected:
                     sel_item = item
+            elif "_bond" in spec:
+                item.setData(1, spec["_bond"])
         if sel_item is not None:
             r = sel_item.sceneBoundingRect().adjusted(-3, -3, 3, 3)
             ring = QGraphicsEllipseItem(r)
@@ -117,8 +119,27 @@ class _View(QGraphicsView):
                 return int(data)
         return None
 
+    def _bond_at(self, pos):
+        for item in self.items(pos):
+            if item.data(0) is not None:
+                return None                 # an atom sits on top of the stick
+            data = item.data(1)
+            if data is not None:
+                return int(data)
+        return None
+
     def contextMenuEvent(self, event):
-        self._o.context.emit(event.globalPos())
+        """Note what was right-clicked (atom, bond or background), then let
+        the window build the matching menu."""
+        o = self._o
+        atom = self._atom_at(event.pos())
+        if atom is not None:
+            o.hit = ("atom", atom)
+            o.select_atom(atom)
+        else:
+            bond = self._bond_at(event.pos())
+            o.hit = ("bond", bond) if bond is not None else (None, -1)
+        o.context.emit(event.globalPos())
 
     def mousePressEvent(self, event):
         if event.button() != Qt.LeftButton:
@@ -153,8 +174,10 @@ class _View(QGraphicsView):
                 event.pos() - delta)
             model.drag_atom(o.mol.atoms, self._press_atom, d.x(), d.y(),
                             o.mol.az, o.mol.el, o.mol.bond,
-                            self._frozen["scale"])
+                            self._frozen["scale"],
+                            bonds=o.mol.bonds if o.lock_lengths else None)
             self.rebuild()
+            o.show_geometry(self._press_atom)
 
     def mouseReleaseEvent(self, event):
         if self._mode == "drag":
@@ -184,6 +207,7 @@ class Viewer3D(QWidget):
         self.mol = model.Molecule(name="empty")
         self.selected = None
         self.order = 1
+        self.hit = (None, -1)           # what the last right-click landed on
 
         self.view = _View(self)
         self.view.atom_clicked.connect(self._on_atom_clicked)
@@ -238,7 +262,19 @@ class Viewer3D(QWidget):
         self.labels_btn.setCheckable(True)
         self.labels_btn.toggled.connect(lambda _=False: self.view.rebuild())
         row.addWidget(self.labels_btn)
+        self.lock_btn = QToolButton()
+        self.lock_btn.setText("Lock lengths")
+        self.lock_btn.setCheckable(True)
+        self.lock_btn.setChecked(True)
+        self.lock_btn.setToolTip(
+            "Hold every bond at its real length (C–O 1.43 Å, C=O 1.23 Å …) "
+            "while you drag an atom — the bond swings instead of stretching")
+        row.addWidget(self.lock_btn)
         return row
+
+    @property
+    def lock_lengths(self):
+        return self.lock_btn.isChecked()
 
     def _palette_row(self):
         row = QHBoxLayout()
@@ -338,9 +374,83 @@ class Viewer3D(QWidget):
         self._update_status()
         self.view.rebuild()
 
+    def select_atom(self, index):
+        self._on_atom_clicked(-1 if index is None else index)
+
     def _on_atom_moved(self):
         self._update_status()
         self.structure_changed.emit()
+
+    def show_geometry(self, index):
+        """Report the dragged atom's bond lengths live in the status line."""
+        parts = []
+        for bi, (i, j, order) in enumerate(self.mol.bonds):
+            if index not in (i, j):
+                continue
+            k = j if i == index else i
+            dash = {1: "–", 2: "=", 3: "≡"}[order]
+            d = model.distance(self.mol.atoms, i, j)
+            parts.append(f"{self.mol.atoms[index][0]}{dash}"
+                         f"{self.mol.atoms[k][0]} {d:.2f} Å")
+        if not parts:
+            return
+        held = " (locked)" if self.lock_lengths else ""
+        self.status.setText("   ".join(parts) + held)
+
+    # ------------------------------------------------------------ bond edits
+    def bond_label(self, bond_index):
+        """``C=O 1.23 Å`` for the bond at *bond_index*."""
+        i, j, order = self.mol.bonds[bond_index]
+        dash = {1: "–", 2: "=", 3: "≡"}[order]
+        d = model.distance(self.mol.atoms, i, j)
+        return (f"{self.mol.atoms[i][0]}{dash}{self.mol.atoms[j][0]} "
+                f"{d:.2f} Å")
+
+    def can_set_order(self, bond_index, order):
+        return model.can_set_bond_order(self.mol.atoms, self.mol.bonds,
+                                        bond_index, order)
+
+    def set_bond_order(self, bond_index, order):
+        """Make a bond single / double / triple, re-lengthening it to match."""
+        if not self.editable or bond_index >= len(self.mol.bonds):
+            return
+        if not model.set_bond_order(self.mol.atoms, self.mol.bonds,
+                                    bond_index, order):
+            self.status.setText(
+                "Cannot make that bond "
+                f"{('single', 'double', 'triple')[order - 1]} — one of its "
+                "atoms has no free valence.")
+            return
+        self.view.rebuild()
+        self._update_status()
+        self.structure_changed.emit()
+
+    def delete_bond(self, bond_index):
+        if not self.editable or bond_index >= len(self.mol.bonds):
+            return
+        model.delete_bond(self.mol.bonds, bond_index)
+        self.view.rebuild()
+        self._update_status()
+        self.structure_changed.emit()
+
+    def bond_element(self, anchor, element, order=1):
+        """Bond an *element* onto atom *anchor* (used by the right-click
+        'Bond on' submenu, which offers the obvious elements)."""
+        self.selected = anchor
+        previous, self.order = self.order, order
+        try:
+            self.add_element(element)
+        finally:
+            self.order = previous
+
+    def bondable(self, anchor, order=1):
+        """Elements that can actually bond onto *anchor* right now."""
+        if not self.editable or anchor is None:
+            return []
+        free = model.free_valence(self.mol.atoms, self.mol.bonds, anchor)
+        if free < order:
+            return []
+        return [el for el in elements.PALETTE if elements.valence(el) >= order]
 
     def add_element(self, element):
         if not self.editable:
