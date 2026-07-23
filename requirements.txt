@@ -1,2 +1,8 @@
 PyQt5>=5.15
 qtawesome>=1.2
+
+# Enables SMILES parsing and .mol/.sdf/.pdb import
+# (Molecule ▸ From SMILES… / Import structure file…). The app still runs
+# if this is missing — the import is guarded — but the standard install
+# includes it.
+rdkit>=2023.3

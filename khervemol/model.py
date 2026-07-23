@@ -215,9 +215,13 @@ def _model(atoms, bonds, w, h, edges=None, rscale=1.0, labels=False,
                           "x2": p2[0], "y2": p2[1], "stroke": _FRAME_COLOR,
                           "width": ew})
     bw = max(2.0, s * 0.11)
-    for i, j, order in bonds:
-        specs += bond_specs(T(proj[i][0], proj[i][1]),
+    for bi, (i, j, order) in enumerate(bonds):
+        sticks = bond_specs(T(proj[i][0], proj[i][1]),
                             T(proj[j][0], proj[j][1]), order, width=bw)
+        if tag_atoms:
+            for stick in sticks:
+                stick["_bond"] = bi          # for builder hit-testing
+        specs += sticks
     for idx in sorted(range(len(atoms)), key=lambda k: proj[k][2]):
         cx, cy = T(proj[idx][0], proj[idx][1])
         a_specs = atom_specs(cx, cy, rad[idx] * s, atoms[idx][0], label=labels)
@@ -250,8 +254,11 @@ def fit_params(atoms, bonds, w, h, az, el, bond, rscale=0.92):
     return {"scale": s, "origin": (ox, oy), "centroid": centroid}
 
 
-def drag_atom(atoms, index, dsx, dsy, az, el, bond, scale):
-    """Move atom *index* by a screen delta (dsx, dsy) in the current view."""
+def drag_atom(atoms, index, dsx, dsy, az, el, bond, scale, bonds=None):
+    """Move atom *index* by a screen delta (dsx, dsy) in the current view.
+
+    Passing *bonds* keeps the atom's bond lengths at their chemical values:
+    the drag then swings the bond around rather than stretching it."""
     ca, sa = math.cos(az), math.sin(az)
     ce, se = math.cos(el), math.sin(el)
     r = (ca, -sa, 0.0)                     # world axis that moves screen-x
@@ -260,6 +267,8 @@ def drag_atom(atoms, index, dsx, dsy, az, el, bond, scale):
     atoms[index][1] += (dsx * r[0] + dsy * g[0]) * k
     atoms[index][2] += (dsx * r[1] + dsy * g[1]) * k
     atoms[index][3] += (dsx * r[2] + dsy * g[2]) * k
+    if bonds is not None:
+        constrain_atom(atoms, bonds, index)
 
 
 def specs_from_atoms(atoms, bonds, w, h, az=None, el=None, bond=1.0,
@@ -310,6 +319,15 @@ def _perp(v):
     return _unit(_cross(v, ref))
 
 
+def minus(p, q):
+    return (p[0] - q[0], p[1] - q[1], p[2] - q[2])
+
+
+#: Public aliases, for structure builders that need to place sp2 centres or
+#: rings by hand (the sp3 case is `add_bonded_atom`).
+unit, cross, perp = _unit, _cross, _perp
+
+
 # ------------------------------------------------------- interactive builder
 _COS_TET = 1.0 / 3.0                # |cos(109.47°)|
 _SIN_TET = math.sqrt(8.0) / 3.0    # sin(109.47°)
@@ -320,8 +338,40 @@ def single_atom(element="C"):
     return [[element, 0.0, 0.0, 0.0]], []
 
 
-def _bond_length(a, b):
-    return 1.0 if "H" in (a, b) else 1.5
+def _bond_length(a, b, order=1):
+    """Equilibrium A–B length (Å) for a bond of *order* — the real chemistry,
+    so C–O (1.43) and C=O (1.23) differ."""
+    return elements.bond_length(a, b, order)
+
+
+def bond_length_of(atoms, bonds, bond_index):
+    """Ideal length of the bond at *bond_index*."""
+    i, j, order = bonds[bond_index]
+    return _bond_length(atoms[i][0], atoms[j][0], order)
+
+
+def distance(atoms, i, j):
+    """Current centre-to-centre distance (Å) between two atoms."""
+    return _norm((atoms[j][1] - atoms[i][1], atoms[j][2] - atoms[i][2],
+                  atoms[j][3] - atoms[i][3]))
+
+
+def angle(atoms, i, j, k):
+    """The i–j–k bond angle in degrees, measured at the middle atom *j*."""
+    u = _unit((atoms[i][1] - atoms[j][1], atoms[i][2] - atoms[j][2],
+               atoms[i][3] - atoms[j][3]))
+    v = _unit((atoms[k][1] - atoms[j][1], atoms[k][2] - atoms[j][2],
+               atoms[k][3] - atoms[j][3]))
+    dot = max(-1.0, min(1.0, u[0] * v[0] + u[1] * v[1] + u[2] * v[2]))
+    return math.degrees(math.acos(dot))
+
+
+def bond_between(bonds, i, j):
+    """Index of the bond joining *i* and *j*, or None."""
+    for bi, (a, b, _o) in enumerate(bonds):
+        if {a, b} == {i, j}:
+            return bi
+    return None
 
 
 def used_valence(bonds, index):
@@ -403,7 +453,7 @@ def add_bonded_atom(atoms, bonds, anchor, element, order=1):
         d = _chain_direction(atoms, bonds, anchor, neigh[0][0], neigh[0][1])
     else:
         d = _free_direction(atoms, bonds, anchor)
-    length = _bond_length(element, atoms[anchor][0])
+    length = _bond_length(element, atoms[anchor][0], order)
     atoms.append([element, ax + d[0] * length, ay + d[1] * length,
                   az + d[2] * length])
     idx = len(atoms) - 1
@@ -420,6 +470,204 @@ def delete_atom(atoms, bonds, index):
             continue
         kept.append([i - (i > index), j - (j > index), o])
     bonds[:] = kept
+
+
+# ------------------------------------------------------- geometry constraints
+def constrain_atom(atoms, bonds, index, iterations=24):
+    """Pull atom *index* back onto every ideal bond length to its neighbours.
+
+    Only that atom moves — the rest of the model stays put. With one
+    neighbour this is exact in a single pass: the atom lands on the sphere of
+    correct radius, so a drag swings the bond around instead of stretching
+    it. With several neighbours each sweep projects onto each neighbour's
+    sphere in turn (alternating projections), which settles in well under a
+    dozen sweeps."""
+    links = [(j if i == index else i, o)
+             for i, j, o in bonds if index in (i, j)]
+    if not links:
+        return
+    for _ in range(iterations):
+        worst = 0.0
+        for k, order in links:
+            target = _bond_length(atoms[index][0], atoms[k][0], order)
+            v = (atoms[index][1] - atoms[k][1], atoms[index][2] - atoms[k][2],
+                 atoms[index][3] - atoms[k][3])
+            d = _norm(v)
+            if d < 1e-9:                    # coincident — push off arbitrarily
+                v, d = (1.0, 0.0, 0.0), 1.0
+            error = target - d
+            worst = max(worst, abs(error))
+            atoms[index][1] += v[0] / d * error
+            atoms[index][2] += v[1] / d * error
+            atoms[index][3] += v[2] / d * error
+        if worst < 1e-6:
+            break
+
+
+def fragment(bonds, start, skip_bond):
+    """Atom indices reachable from *start* without crossing bond *skip_bond*.
+
+    Returns the whole connected side of that bond — or, in a ring, every atom
+    on the cycle (so callers can tell a ring bond from a rotatable one)."""
+    seen = {start}
+    stack = [start]
+    while stack:
+        cur = stack.pop()
+        for bi, (i, j, _o) in enumerate(bonds):
+            if bi == skip_bond:
+                continue
+            k = j if i == cur else (i if j == cur else None)
+            if k is not None and k not in seen:
+                seen.add(k)
+                stack.append(k)
+    return seen
+
+
+def relax_bond(atoms, bonds, bond_index):
+    """Restore bond *bond_index* to its ideal length by sliding the smaller
+    side along the bond axis. A ring bond is left alone (nothing can move
+    without breaking the cycle)."""
+    i, j, _o = bonds[bond_index]
+    target = bond_length_of(atoms, bonds, bond_index)
+    v = (atoms[j][1] - atoms[i][1], atoms[j][2] - atoms[i][2],
+         atoms[j][3] - atoms[i][3])
+    d = _norm(v)
+    if d < 1e-9:
+        v, d = (1.0, 0.0, 0.0), 1.0
+    delta = target - d
+    if abs(delta) < 1e-6:
+        return
+    side = fragment(bonds, j, bond_index)
+    if i in side:                       # ring bond — no free side to slide
+        return
+    other = fragment(bonds, i, bond_index)
+    if len(side) > len(other):          # move whichever side is smaller
+        side, sign = other, -1.0
+    else:
+        sign = 1.0
+    for k in side:
+        atoms[k][1] += v[0] / d * delta * sign
+        atoms[k][2] += v[1] / d * delta * sign
+        atoms[k][3] += v[2] / d * delta * sign
+
+
+def can_bond(atoms, bonds, i, j, order=1):
+    """True if atoms *i* and *j* may be joined by a bond of *order* — they
+    are distinct, not already bonded, and both have the free valence."""
+    if i == j or bond_between(bonds, i, j) is not None:
+        return False
+    return all(free_valence(atoms, bonds, k) >= order for k in (i, j))
+
+
+def add_bond(atoms, bonds, i, j, order=1):
+    """Bond two *existing* atoms, then pull them to the right length.
+
+    Joining two separate fragments slides the smaller one along the new bond
+    axis; closing a ring leaves the geometry alone. Returns success."""
+    if not can_bond(atoms, bonds, i, j, order):
+        return False
+    bonds.append([i, j, order])
+    relax_bond(atoms, bonds, len(bonds) - 1)
+    return True
+
+
+def can_set_bond_order(atoms, bonds, bond_index, order):
+    """True if raising bond *bond_index* to *order* fits both atoms' valence."""
+    i, j, old = bonds[bond_index]
+    delta = order - old
+    if delta <= 0:
+        return order >= 1
+    return all(free_valence(atoms, bonds, k) >= delta for k in (i, j))
+
+
+def set_bond_order(atoms, bonds, bond_index, order):
+    """Change a bond's order and re-length it (C–O 1.43 Å → C=O 1.23 Å).
+
+    Refuses orders the two atoms' valences cannot carry; returns success."""
+    order = max(1, min(3, int(order)))
+    if not can_set_bond_order(atoms, bonds, bond_index, order):
+        return False
+    bonds[bond_index][2] = order
+    relax_bond(atoms, bonds, bond_index)
+    return True
+
+
+def delete_bond(bonds, bond_index):
+    """Remove a bond, leaving both atoms in place."""
+    bonds.pop(bond_index)
+
+
+# ------------------------------------------------------- merging / reattaching
+def merge(atoms, bonds, new_atoms, new_bonds, gap=2.0):
+    """Append another structure as a separate fragment, clear of this one.
+
+    The incoming atoms are shifted so their bounding box sits *gap* ångström
+    to the right of the existing one. Returns the new atoms' index offset."""
+    base = len(atoms)
+    dx = dy = dz = 0.0
+    if atoms and new_atoms:
+        dx = (max(a[1] for a in atoms) - min(a[1] for a in new_atoms)) + gap
+        dy = (_centroid(atoms)[1]
+              - sum(a[2] for a in new_atoms) / len(new_atoms))
+        dz = (_centroid(atoms)[2]
+              - sum(a[3] for a in new_atoms) / len(new_atoms))
+    for a in new_atoms:
+        atoms.append([a[0], a[1] + dx, a[2] + dy, a[3] + dz])
+    for i, j, o in new_bonds:
+        bonds.append([i + base, j + base, o])
+    return base
+
+
+def translate(atoms, indices, delta):
+    for k in indices:
+        atoms[k][1] += delta[0]
+        atoms[k][2] += delta[1]
+        atoms[k][3] += delta[2]
+
+
+def moving_fragment(bonds, atom, old_bond):
+    """The atoms that would travel with *atom* if bond *old_bond* were cut."""
+    return fragment(bonds, atom, -1 if old_bond is None else old_bond)
+
+
+def can_reattach(atoms, bonds, atom, old_bond, anchor, order=1):
+    """True if *atom* (with the fragment hanging off it) can be unhooked from
+    bond *old_bond* and re-bonded to *anchor* instead."""
+    if atom == anchor or not 0 <= anchor < len(atoms):
+        return False
+    if old_bond is not None and anchor in bonds[old_bond][:2]:
+        return False                    # that is the bond we are replacing
+    # The anchor must not travel with the atom: it would be bonding a
+    # fragment to itself. (A second bond between the two — a ring — leaves
+    # the anchor reachable without crossing *old_bond*, so this catches it.)
+    if anchor in moving_fragment(bonds, atom, old_bond):
+        return False
+    freed = bonds[old_bond][2] if old_bond is not None else 0
+    return (free_valence(atoms, bonds, atom) + freed >= order
+            and free_valence(atoms, bonds, anchor) >= order)
+
+
+def reattach(atoms, bonds, atom, old_bond, anchor, order=1):
+    """Move *atom* — and everything hanging off it — onto a new *anchor*.
+
+    Breaks bond *old_bond* (the one to its current parent), then swings the
+    whole fragment so *atom* lands on a free tetrahedral direction of the
+    anchor, at the right bond length. Returns success."""
+    if not can_reattach(atoms, bonds, atom, old_bond, anchor, order):
+        return False
+    moving = moving_fragment(bonds, atom, old_bond)
+    if old_bond is not None:
+        bonds.pop(old_bond)
+    d = _free_direction(atoms, bonds, anchor)
+    length = _bond_length(atoms[anchor][0], atoms[atom][0], order)
+    target = (atoms[anchor][1] + d[0] * length,
+              atoms[anchor][2] + d[1] * length,
+              atoms[anchor][3] + d[2] * length)
+    translate(atoms, moving, (target[0] - atoms[atom][1],
+                              target[1] - atoms[atom][2],
+                              target[2] - atoms[atom][3]))
+    bonds.append([anchor, atom, order])
+    return True
 
 
 # ----------------------------------------------------------------- container

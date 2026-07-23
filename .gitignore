@@ -13,3 +13,6 @@ scratch/
 
 # scratch / preview artifacts
 _preview/
+
+# local RDKit documentation dump (100M, reference only)
+Research/

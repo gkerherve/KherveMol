@@ -26,10 +26,18 @@ except ImportError:          # pragma: no cover - optional dependency
 #: Glyph colour for neutral icons — set by the active theme.
 DEFAULT_COLOR = "#2b6a57"
 
-#: The app mark: a "KMol" wordmark over a ball-and-stick pair on a teal tile.
-_TILE_FILL = "#c9ecdf"
-_TILE_EDGE = "#8fcdb6"
-_INK = "#123529"
+#: The app mark: a "KMol" wordmark over an ethanol ball-and-stick, on a
+#: warm amber-yellow tile — the Kherve-family yellow, a shade deeper and
+#: more golden than KhervePaint's pale lemon so the two read as siblings
+#: but never twins.
+_TILE_FILL = "#ffe27a"
+_TILE_EDGE = "#e6bd44"
+_INK = "#2b2b2b"
+
+#: CPK ball colours used in the app mark's ethanol molecule.
+_C = "#3a3a3a"
+_O = "#e01f1f"
+_H = "#f4f4f4"
 
 
 def set_icon_color(color: str):
@@ -95,8 +103,39 @@ def _paint_wordmark(p, rect, text):
     p.drawText(rect, Qt.AlignCenter, text)
 
 
+def _paint_ethanol(p, box):
+    """Draw an ethanol (CH3-CH2-OH) ball-and-stick inside *box*.
+
+    A carbon-carbon-oxygen zig-zag with the hydroxyl H and a couple of
+    methyl H's, so the mark reads as a real small molecule at any size."""
+    x0, y0, w, h = box.x(), box.y(), box.width(), box.height()
+
+    def P(ux, uy):
+        return (x0 + ux * w, y0 + uy * h)
+
+    c1 = P(0.26, 0.54)          # methyl carbon
+    c2 = P(0.50, 0.34)          # methylene carbon
+    o = P(0.74, 0.54)           # hydroxyl oxygen
+    ho = P(0.92, 0.40)          # -O-H hydrogen
+    h1 = P(0.09, 0.42)          # a methyl hydrogen
+    hr = min(w, h) * 0.24       # heavy-atom radius
+    rh = min(w, h) * 0.14       # hydrogen radius
+
+    stick = QPen(QColor("#63676e"), max(1.4, min(w, h) * 0.11))
+    stick.setCapStyle(Qt.RoundCap)
+    p.setPen(stick)
+    for a, b in ((c1, c2), (c2, o), (o, ho), (c1, h1)):
+        p.drawLine(QPointF(*a), QPointF(*b))
+
+    _sphere(p, h1[0], h1[1], rh, _H)          # H's sit behind the heavy atoms
+    _sphere(p, ho[0], ho[1], rh, _H)
+    _sphere(p, c1[0], c1[1], hr, _C)
+    _sphere(p, c2[0], c2[1], hr, _C)
+    _sphere(p, o[0], o[1], hr * 0.96, _O)
+
+
 def _paint_kmol(size):
-    """Draw the KherveMol mark: 'KMol' above a two-atom ball-and-stick."""
+    """Draw the KherveMol mark: 'KMol' above an ethanol ball-and-stick."""
     pm = QPixmap(size, size)
     pm.fill(Qt.transparent)
     p = QPainter(pm)
@@ -104,15 +143,8 @@ def _paint_kmol(size):
     s = float(size)
     rect = _paint_tile(p, s)
     x, y, w, h = rect.x(), rect.y(), rect.width(), rect.height()
-    _paint_wordmark(p, QRectF(x, y + h * 0.06, w, h * 0.40), "KMol")
-    # ball-and-stick: a bond between a carbon and an oxygen sphere.
-    cy = y + h * 0.72
-    r = h * 0.17
-    ax, bx = x + w * 0.34, x + w * 0.66
-    p.setPen(QPen(QColor("#5c6168"), max(1.5, s * 0.05)))
-    p.drawLine(QPointF(ax, cy), QPointF(bx, cy))
-    _sphere(p, ax, cy, r, "#3a3a3a")
-    _sphere(p, bx, cy, r * 0.92, "#e01f1f")
+    _paint_wordmark(p, QRectF(x, y + h * 0.05, w, h * 0.38), "KMol")
+    _paint_ethanol(p, QRectF(x + w * 0.04, y + h * 0.42, w * 0.92, h * 0.54))
     p.end()
     return pm
 

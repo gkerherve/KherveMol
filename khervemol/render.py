@@ -114,6 +114,20 @@ def add_specs(scene, specs):
     return items
 
 
+def specs_from_graph2d(atoms, bonds, r=15.0, bond_w=6.0):
+    """Ball-and-stick specs from a flat 2D graph (atoms ``[el,x,y]``,
+    bonds ``[i,j,order]``) — used to preview a 2D depiction."""
+    from . import model
+    specs = []
+    for i, j, order in bonds:
+        a, b = atoms[i], atoms[j]
+        specs += model.bond_specs((a[1], a[2]), (b[1], b[2]), order,
+                                  width=bond_w)
+    for el, x, y in atoms:
+        specs += model.atom_specs(x, y, r, el)
+    return specs
+
+
 def render_image(specs, width, height, background="#ffffff", margin=24,
                  transparent=False):
     """Rasterise *specs* into a QImage sized (width, height), scaled to fit
