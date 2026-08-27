@@ -25,11 +25,12 @@ import math
 
 from PyQt5.QtCore import QEvent, QRectF, QSize, Qt, pyqtSignal
 from PyQt5.QtGui import QColor, QPainter, QPen
-from PyQt5.QtWidgets import (QComboBox, QGraphicsEllipseItem, QGraphicsScene,
-                             QGraphicsView, QHBoxLayout, QLabel, QPushButton,
-                             QSlider, QToolButton, QVBoxLayout, QWidget)
+from PyQt5.QtWidgets import (QColorDialog, QComboBox, QGraphicsEllipseItem,
+                             QGraphicsScene, QGraphicsView, QHBoxLayout,
+                             QLabel, QPushButton, QSlider, QSpinBox,
+                             QToolButton, QVBoxLayout, QWidget)
 
-from . import dnd, elements, icons, model, render
+from . import dnd, elements, icons, model, molcolor, render
 
 _HALF = math.pi / 2.0
 _W = 400.0                               # preview model-box size (scene units)
@@ -278,6 +279,9 @@ class Viewer3D(QWidget):
 
         root.addLayout(self._bond_row())
         root.addLayout(self._palette_row())
+        root.addLayout(self._color_row())
+        self.crystal_row = self._crystal_row()
+        root.addLayout(self.crystal_row)
 
     # ------------------------------------------------------------------ UI
     def _view_toolbar(self):
@@ -371,15 +375,99 @@ class Viewer3D(QWidget):
         row.addStretch(1)
         return row
 
+    def _color_row(self):
+        """Colours, the colour key and coordination polyhedra — the display
+        controls that apply to a molecule and a crystal alike."""
+        row = QHBoxLayout()
+        row.addWidget(QLabel("Colour:"))
+        self.color_btn = QPushButton("Atom colour…")
+        self.color_btn.setToolTip(
+            "Recolour the selected atom. On a crystal this recolours every "
+            "atom of that element and lattice site, since the lattice is "
+            "regenerated on every draw.")
+        self.color_btn.clicked.connect(self.pick_color)
+        row.addWidget(self.color_btn)
+        self.reset_color_btn = QPushButton("Reset colours")
+        self.reset_color_btn.setToolTip("Restore the standard CPK and "
+                                        "lattice-site colours")
+        self.reset_color_btn.clicked.connect(self.reset_colors)
+        row.addWidget(self.reset_color_btn)
+        self.legend_btn = QToolButton()
+        self.legend_btn.setText("Legend")
+        self.legend_btn.setCheckable(True)
+        self.legend_btn.setToolTip(
+            "Show a colour key beside the structure — one lit sphere per "
+            "element and lattice site (included in PNG / SVG export)")
+        self.legend_btn.toggled.connect(lambda _=False: self.view.rebuild())
+        row.addWidget(self.legend_btn)
+        self.poly_btn = QToolButton()
+        self.poly_btn.setText("Polyhedra")
+        self.poly_btn.setCheckable(True)
+        self.poly_btn.setToolTip(
+            "Draw translucent coordination polyhedra — the faces spanned by "
+            "each ≥4-coordinate atom's bonded neighbours (VESTA style)")
+        self.poly_btn.toggled.connect(self._on_poly)
+        row.addWidget(self.poly_btn)
+        row.addStretch(1)
+        return row
+
+    def _crystal_row(self):
+        """Supercell stacking and per-cell tilt — crystals only."""
+        row = QHBoxLayout()
+        self._crystal_widgets = []
+
+        def keep(w):
+            self._crystal_widgets.append(w)
+            row.addWidget(w)
+            return w
+
+        keep(QLabel("Supercell:"))
+        self.cell_spins = []
+        for axis in range(3):
+            sp = QSpinBox()
+            sp.setRange(1, 20)
+            sp.setToolTip("Unit cells along %s" % "abc"[axis])
+            sp.valueChanged.connect(self._on_cells)
+            self.cell_spins.append(sp)
+            keep(sp)
+            if axis < 2:
+                keep(QLabel("×"))
+        row.addSpacing(12)
+        keep(QLabel("Tilt cell:"))
+        self.tilt_spins = []
+        for axis in ("x", "y", "z"):
+            sp = QSpinBox()
+            sp.setRange(-180, 180)
+            sp.setSingleStep(5)
+            sp.setSuffix("°")
+            sp.setToolTip(f"Rotate the selected atom's unit cell about {axis}"
+                          " — its neighbours deform to follow, as a defect")
+            sp.valueChanged.connect(self._on_tilt)
+            self.tilt_spins.append(sp)
+            keep(sp)
+        self.reset_tilt_btn = keep(QPushButton("Reset tilts"))
+        self.reset_tilt_btn.clicked.connect(self.reset_tilts)
+        row.addStretch(1)
+        return row
+
+    def _show_crystal_row(self, on):
+        for w in self._crystal_widgets:
+            w.setVisible(on)
+
     # ------------------------------------------------------------- molecule
     def set_molecule(self, mol):
         self.mol = mol
         self.selected = None
         self.view._zoom = 1.0
+        editable = self.editable
+        # A crystal contracts all the way to 0 — the lattice shrinks about
+        # its centre until the spheres touch (the close-packed look).
         self.bond_slider.blockSignals(True)
+        self.bond_slider.setRange(80 if editable else 0, 300)
         self.bond_slider.setValue(int(self.mol.bond * 100))
         self.bond_slider.blockSignals(False)
-        editable = self.editable
+        self._bond_label.setText("Bond length:" if editable
+                                 else "Atom spacing:")
         for w in (self._bond_label, self.bond_slider):
             w.setEnabled(True)
         for btn in self._palette_btns:
@@ -388,6 +476,7 @@ class Viewer3D(QWidget):
         self.order_combo.setEnabled(editable)
         self.join_btn.setEnabled(editable)
         self.del_btn.setEnabled(editable)
+        self._sync_crystal_controls()
         self._update_status()
         self.view.rebuild()
         self.molecule_changed.emit()
@@ -431,12 +520,22 @@ class Viewer3D(QWidget):
         return not self.mol.crystal
 
     def render_specs(self, w, h, frozen=None):
-        return self.mol.specs(w, h, tag_atoms=self.editable, frozen=frozen,
-                              labels=self.labels_btn.isChecked())
+        specs = self.mol.specs(w, h, tag_atoms=True, frozen=frozen,
+                               labels=self.labels_btn.isChecked())
+        return specs + self._legend_specs(w, h)
 
     def export_specs(self, w=1200, h=1000):
-        """Untagged specs for PNG export at the current orientation."""
-        return self.mol.specs(w, h, labels=self.labels_btn.isChecked())
+        """Untagged specs for PNG / SVG export at the current orientation."""
+        specs = self.mol.specs(w, h, labels=self.labels_btn.isChecked())
+        return specs + self._legend_specs(w, h)
+
+    def _legend_specs(self, w, h):
+        """The colour key, drawn to the right of the model box."""
+        if not self.legend_btn.isChecked():
+            return []
+        entries = molcolor.legend_entries(self.mol.atoms, self.mol.colors)
+        return molcolor.legend_specs(entries, x=w * 1.02, y=h * 0.06,
+                                     r=max(6.0, w * 0.022))
 
     # -------------------------------------------------------------- actions
     def _set_view(self, az, el):
@@ -474,6 +573,8 @@ class Viewer3D(QWidget):
             self.selection.remove(index)
         else:
             self.selection.append(index)
+        if self.mol.can_stack and self.selected is not None:
+            self._show_tilt(self.mol.tilts.get(self.mol.cell_of(self.selected)))
         self._update_status()
         self.view.rebuild()
         self.selection_changed.emit()
@@ -729,14 +830,153 @@ class Viewer3D(QWidget):
         else:
             super().keyPressEvent(event)
 
+    def _crystal_status(self):
+        """What a crystal's status line says: the lattice parameters, the
+        supercell, and what the selected atom's cell is."""
+        from . import lattices
+        bits = []
+        params = lattices.PARAM_TEXT.get(self.mol.name)
+        if params:
+            bits.append(params)
+        if self.mol.stacked:
+            bits.append("supercell %d×%d×%d (%d atoms)"
+                        % (self.mol.cells + (len(self.mol.atoms),)))
+        idx = self.selected
+        if idx is not None and idx < len(self.mol.atoms):
+            atom = self.mol.atoms[idx]
+            site = molcolor.SITE_LABELS.get(molcolor.tint(atom))
+            where = f" ({site})" if site else ""
+            cell = ""
+            if self.mol.stacked:
+                cell = " in cell (%s)" % self.mol.cell_of(idx).replace(",",
+                                                                      ", ")
+            bits.append(f"selected {atom[0]}{where}{cell} — Atom colour… "
+                        f"recolours every {atom[0]} on this site"
+                        + (", Tilt cell rotates that cell" if cell else ""))
+        else:
+            bits.append("drag to rotate, wheel to zoom; click an atom to "
+                        "recolour it or pick its cell")
+        return ".  ".join(bits) + "."
+
+    # ------------------------------------------------- colours / polyhedra
+    def pick_color(self, color=None):
+        """Recolour the selected atom. *color* skips the dialog (tests, or a
+        menu action that already has one)."""
+        idx = self.selected
+        if idx is None or idx >= len(self.mol.atoms):
+            self.status.setText("Click an atom first, then pick its colour.")
+            return None
+        if color is None:
+            current = molcolor.atom_color(self.mol.atoms[idx], self.mol.colors)
+            chosen = QColorDialog.getColor(QColor(current), self,
+                                           "Atom colour")
+            if not chosen.isValid():
+                return None
+            color = chosen.name()
+        key = molcolor.set_color(self.mol.atoms, self.mol.colors, idx, color,
+                                 self.editable)
+        self.view.rebuild()
+        self.structure_changed.emit()
+        return key
+
+    def reset_colors(self):
+        molcolor.clear_colors(self.mol.atoms, self.mol.colors)
+        if self.mol.crystal:
+            self.mol.rebuild()          # restore the lattice-site tints
+        self.view.rebuild()
+        self.structure_changed.emit()
+
+    def _on_poly(self, on):
+        self.mol.poly = bool(on)
+        self.view.rebuild()
+        self.view_changed.emit()
+
+    # --------------------------------------------------- supercell / tilts
+    def _sync_crystal_controls(self):
+        """Match the crystal controls to the loaded structure: the stacking
+        row only makes sense for a tileable lattice, and Polyhedra only
+        where something is ≥4-coordinate."""
+        stackable = self.mol.can_stack
+        self._show_crystal_row(stackable)
+        if stackable:
+            for sp, n in zip(self.cell_spins, self.mol.cells):
+                sp.blockSignals(True)
+                sp.setValue(n)
+                sp.blockSignals(False)
+            self._show_tilt(self.mol.tilts.get("0,0,0"))
+        self.poly_btn.blockSignals(True)
+        self.poly_btn.setChecked(bool(self.mol.poly))
+        self.poly_btn.blockSignals(False)
+        self.poly_btn.setEnabled(
+            molcolor.has_polyhedra(self.mol.atoms, self.mol.bonds))
+
+    def _show_tilt(self, values):
+        for sp, v in zip(self.tilt_spins, values or (0, 0, 0)):
+            sp.blockSignals(True)
+            sp.setValue(int(v))
+            sp.blockSignals(False)
+
+    def set_cells(self, nx, ny, nz):
+        """Stack the crystal into an nx × ny × nz supercell."""
+        self.mol.cells = (int(nx), int(ny), int(nz))
+        self.mol.prune_tilts()
+        self.mol.rebuild()
+        self.selection = []
+        self.view._zoom = 1.0
+        self._sync_crystal_controls()
+        self.view.rebuild()
+        self._update_status()
+        self.structure_changed.emit()
+        self.selection_changed.emit()
+
+    def _on_cells(self):
+        self.set_cells(*(sp.value() for sp in self.cell_spins))
+
+    def set_tilt(self, cell_key, angles):
+        """Tilt one unit cell (a ``"i,j,k"`` key) by (rx, ry, rz) degrees."""
+        if any(angles):
+            self.mol.tilts[cell_key] = [int(v) for v in angles]
+        else:
+            self.mol.tilts.pop(cell_key, None)
+        self.mol.rebuild()
+        # Re-tiling renumbers the atoms, so re-select an atom of the SAME
+        # cell — otherwise the next spin tick would tilt a different one.
+        self.selection = [i for i, o in enumerate(self.mol.owners)
+                          if o == cell_key][:1]
+        self.view.rebuild()
+        self._update_status()
+        self.structure_changed.emit()
+        self.selection_changed.emit()
+
+    def _on_tilt(self):
+        idx = self.selected
+        if idx is None or idx >= len(self.mol.owners):
+            self.status.setText("Click an atom of the cell you want to tilt "
+                                "first.")
+            self._show_tilt(None)
+            return
+        self.set_tilt(self.mol.cell_of(idx),
+                      [sp.value() for sp in self.tilt_spins])
+
+    def reset_tilts(self):
+        self.mol.tilts = {}
+        self.mol.rebuild()
+        self._show_tilt(None)
+        self.view.rebuild()
+        self._update_status()
+        self.structure_changed.emit()
+
     def _update_status(self):
         formula = self.mol.formula()
         head = f"{self.mol.label}   [{formula}]" if formula else self.mol.label
         if hasattr(self, "join_btn"):
             self.join_btn.setEnabled(self.can_bond_selected(self.order))
+        # Editing can create (or destroy) a ≥4-coordinate centre, so the
+        # polyhedra toggle is re-tested on every structure change.
+        self.poly_btn.setEnabled(
+            molcolor.has_polyhedra(self.mol.atoms, self.mol.bonds))
         if not self.editable:
-            self.status.setText(f"{head} — drag to rotate, wheel to zoom "
-                                "(fixed lattice).")
+            self.status.setText(f"{head} — {self._crystal_status()}")
             return
         if len(self.selection) >= 2:
             i, j = self.selection[-2], self.selection[-1]
