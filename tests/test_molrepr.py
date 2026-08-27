@@ -164,3 +164,19 @@ def test_a_built_in_molecule_keeps_its_formula_in_2d(qapp):
     e = Editor2D()
     e.set_structure(flat, [list(b) for b in mol.bonds])
     assert e.formula() == "C₂H₆O"
+
+
+def test_a_loaded_sketch_is_scrolled_into_view(qapp):
+    """The canvas is a fixed ±2000 sheet; a loaded structure sits near the
+    origin, so without centring the tab just looks empty."""
+    from khervemol.editor2d import Editor2D
+    e = Editor2D()
+    e.resize(600, 400)
+    e.show()
+    e.set_structure([["C", 900.0, 900.0], ["O", 944.0, 900.0]], [[0, 1, 1]])
+    qapp.processEvents()
+    qapp.processEvents()
+    c = e.canvas
+    visible = c.mapToScene(c.viewport().rect()).boundingRect()
+    assert visible.contains(c.scene().itemsBoundingRect().center())
+    e.hide()

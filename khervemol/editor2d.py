@@ -27,7 +27,7 @@ the Free Software Foundation, either version 3 of the License, or
 
 import math
 
-from PyQt5.QtCore import QLineF, QPointF, QRectF, Qt, pyqtSignal
+from PyQt5.QtCore import QLineF, QPointF, QRectF, Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QColor, QFont, QPainter, QPen
 from PyQt5.QtWidgets import (QButtonGroup, QComboBox, QGraphicsScene,
                              QGraphicsView, QHBoxLayout, QLabel, QPushButton,
@@ -68,6 +68,9 @@ class _Canvas(QGraphicsView):
         self._move_comp = set()
         self._move_last = None
         self._preview = None
+        #: Deferred-centring budget: each attempt runs after the pending
+        #: layout, so a few are enough to land once the view is real.
+        self._center_tries = 0
         self.redraw()
 
     # ---------------------------------------------------- connected fragment
@@ -363,6 +366,49 @@ class _Canvas(QGraphicsView):
         txt.setPos(x - br.width() / 2.0, y - br.height() / 2.0)
         txt.setZValue(6)
 
+    def center_on_content(self):
+        """Scroll to whatever is drawn.
+
+        The canvas is a fixed ±2000 sheet so molecules can be spread out,
+        but a freshly loaded structure sits near the origin — without this
+        the view stays wherever it was and the tab looks empty.
+
+        The request is **retried until it takes**: a view inside a tab has
+        no scroll range while it is being laid out, so an early `centerOn`
+        is silently undone. Rather than guess when the geometry is final,
+        check afterwards whether the content is actually on screen and try
+        again on the next show / resize / event loop turn if it isn't."""
+        box = self.scene().itemsBoundingRect()
+        if box.isEmpty():
+            return
+        self.centerOn(box.center())
+        visible = self.mapToScene(self.viewport().rect()).boundingRect()
+        if self.isVisible() and visible.contains(box.center())                 and self._center_tries <= 0:
+            return
+        # Not settled: the view reports a size and a scroll range it does
+        # not really have yet, and this centring will be undone. Try again
+        # after the pending layout, a bounded number of times.
+        self._center_tries = max(self._center_tries - 1, 0)
+        QTimer.singleShot(0, self._retry_center)
+
+    def _retry_center(self):
+        if self._center_tries > 0 or not self.isVisible():
+            self.center_on_content()
+
+    def request_center(self, tries=4):
+        """Centre on the content once the view has settled."""
+        self._center_tries = tries
+        self.center_on_content()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self.request_center()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self._center_tries > 0:
+            self.center_on_content()
+
     def wheelEvent(self, event):
         factor = 1.15 if event.angleDelta().y() > 0 else 1 / 1.15
         self.scale(factor, factor)
@@ -468,6 +514,7 @@ class Editor2D(QWidget):
         can't move an atom you can no longer see."""
         if key not in molrepr.MODES:
             return
+        was = self.mode
         self.mode = key
         i = self.mode_combo.findData(key)
         if i >= 0 and i != self.mode_combo.currentIndex():
@@ -479,6 +526,10 @@ class Editor2D(QWidget):
             btn.setEnabled(editable)
         self.el_combo.setEnabled(editable)
         self.canvas.redraw()
+        if key == "condensed" or was == "condensed":
+            # the condensed formula is drawn at the origin, nowhere near
+            # where the structure was
+            self.canvas.request_center()
         self._on_changed()
 
     @property
@@ -502,6 +553,7 @@ class Editor2D(QWidget):
         self.atoms = [list(a) for a in atoms]
         self.bonds = [list(b) for b in bonds]
         self.canvas.redraw()
+        self.canvas.request_center()
         self._on_changed()
 
     def add_fragment(self, atoms, bonds, cx, cy):
