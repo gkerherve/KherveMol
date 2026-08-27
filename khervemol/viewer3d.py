@@ -947,6 +947,9 @@ class Viewer3D(QWidget):
         # cell — otherwise the next spin tick would tilt a different one.
         self.selection = [i for i, o in enumerate(self.mol.owners)
                           if o == cell_key][:1]
+        # The spins are the source when the user turns them, but not when a
+        # menu or a reload sets the tilt — show what the cell actually has.
+        self._show_tilt(self.mol.tilts.get(cell_key))
         self.view.rebuild()
         self._update_status()
         self.structure_changed.emit()

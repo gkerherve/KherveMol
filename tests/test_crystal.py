@@ -434,3 +434,16 @@ def test_the_cell_count_is_capped(qapp):
     v.set_molecule(library.make("simple_cubic"))
     v.set_cells(99, 0, 3)
     assert v.mol.cells == (supercell.MAX_CELLS, 1, 3)
+
+
+def test_the_tilt_spins_show_the_cell_they_land_on(qapp):
+    """Setting a tilt from a menu or a reload must move the spins too —
+    they are only the source when the user turns them."""
+    from khervemol.viewer3d import Viewer3D
+    v = Viewer3D()
+    v.set_molecule(library.make("perovskite"))
+    v.set_cells(2, 2, 2)
+    v.set_tilt("1,1,1", (20, 15, 0))
+    assert [sp.value() for sp in v.tilt_spins] == [20, 15, 0]
+    v.reset_tilts()
+    assert [sp.value() for sp in v.tilt_spins] == [0, 0, 0]
