@@ -36,7 +36,7 @@ def test_compute_basic_rows(qapp):
 
 def test_compute_crystal_note(qapp):
     rows = dict(properties.compute(library.make("nacl")))
-    assert "lattice" in rows["Note"].lower()
+    assert "lattice" in rows["Descriptors"].lower()
 
 
 @pytest.mark.skipif(not rdkit_io.available(), reason="RDKit not installed")
@@ -45,3 +45,32 @@ def test_descriptors_present(qapp):
     assert d and "MolWt" in d and "LogP" in d and "TPSA" in d
     rows = dict(properties.compute(library.make("ethanol")))
     assert "LogP (Crippen)" in rows and "H-bond donors" in rows
+
+
+def test_a_crystal_reports_its_lattice_not_molecular_descriptors():
+    from khervemol import library, properties
+    mol = library.make("perovskite")
+    mol.cells = (2, 2, 1)
+    mol.tilts = {"1,0,0": [10, 0, 0]}
+    mol.rebuild()
+    rows = dict(properties.compute(mol))
+    assert rows["Type"] == "Crystal lattice"
+    assert "4 unit cells" in rows["Supercell"]
+    assert "Ti 6" in rows["Coordination"]
+    assert "(1, 0, 0)" in rows["Tilted cells"]
+    assert "Molecular weight" not in rows        # a lattice has no molar mass
+    assert "Mass drawn" in rows
+
+
+def test_a_lattice_system_reports_its_parameters():
+    from khervemol import library, properties
+    rows = dict(properties.compute(library.make("monoclinic")))
+    assert "β=70°" in rows["Lattice parameters"]
+    assert rows["Supercell"] == "single unit cell"
+
+
+def test_a_molecule_still_reports_a_molecular_weight():
+    from khervemol import library, properties
+    rows = dict(properties.compute(library.make("ethanol")))
+    assert "Molecular weight" in rows
+    assert "Type" not in rows

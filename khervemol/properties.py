@@ -22,7 +22,7 @@ from PyQt5.QtWidgets import (QAbstractItemView, QDialog, QDialogButtonBox,
                              QHeaderView, QLabel, QTableWidget,
                              QTableWidgetItem, QVBoxLayout)
 
-from . import elements, rdkit_io
+from . import elements, lattices, rdkit_io
 
 #: Advanced descriptor key -> (row label, formatter).
 _ADVANCED = [
@@ -53,6 +53,52 @@ def molecular_weight(mol):
     return sum(elements.weight(e) * n for e, n in _composition(mol).items())
 
 
+def _crystal_rows(mol):
+    """The lattice half of a crystal's property sheet. A supercell's formula
+    counts the atoms actually drawn, which is not the stoichiometric unit —
+    shared corners belong to several cells at once — so say so rather than
+    let the number be read as a composition."""
+    rows = [("Type", "Crystal lattice")]
+    params = lattices.PARAM_TEXT.get(mol.name)
+    if params:
+        rows.append(("Lattice parameters", params))
+    if mol.stacked:
+        nx, ny, nz = mol.cells
+        rows.append(("Supercell", f"{nx} × {ny} × {nz} = {nx * ny * nz} "
+                                  "unit cells"))
+        rows.append(("Note", "Counts are for the drawn supercell: atoms "
+                             "shared between cells are counted once, so the "
+                             "formula is not the stoichiometric unit."))
+    else:
+        rows.append(("Supercell", "single unit cell"))
+    if mol.tilts:
+        rows.append(("Tilted cells",
+                     ", ".join("(%s) %g°, %g°, %g°"
+                               % ((k.replace(",", ", "),) + tuple(v))
+                               for k, v in sorted(mol.tilts.items()))))
+    coord = _coordination(mol)
+    if coord:
+        rows.append(("Coordination", coord))
+    rows.append(("Descriptors", "Molecular descriptors do not apply to a "
+                                "periodic lattice."))
+    return rows
+
+
+def _coordination(mol):
+    """How many neighbours each bonded element has, e.g. "Ti 6, O 2"."""
+    count = {}
+    for bond in mol.bonds:
+        for k in (bond[0], bond[1]):
+            count[k] = count.get(k, 0) + 1
+    if not count:
+        return ""
+    per = {}
+    for idx, n in count.items():
+        per.setdefault(mol.atoms[idx][0], set()).add(n)
+    return ", ".join(f"{el} {'/'.join(str(n) for n in sorted(ns))}"
+                     for el, ns in sorted(per.items()))
+
+
 def compute(mol):
     """Ordered ``[(label, value), ...]`` property rows for *mol*."""
     counts = _composition(mol)
@@ -66,10 +112,10 @@ def compute(mol):
         ("Bonds", str(len(mol.bonds))),
     ]
     if mol.crystal:
-        rows.append(("Type", "Crystal unit cell"))
-        rows.append(("Note", "Molecular descriptors do not apply to a "
-                             "periodic lattice."))
-        return rows
+        # "Molecular weight" would read as a molar mass; for a lattice it is
+        # just the mass of what is drawn.
+        rows[2] = ("Mass drawn", rows[2][1])
+        return rows[:1] + _crystal_rows(mol) + rows[1:]
 
     adv = rdkit_io.descriptors_from_structure(mol.atoms, mol.bonds)
     if adv:
