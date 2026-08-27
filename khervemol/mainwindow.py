@@ -20,7 +20,7 @@ from PyQt5.QtWidgets import (QAction, QActionGroup, QApplication, QDialog,
 
 from . import (__version__, catalog, dnd, document, elements, help as help_mod,
                icons, library, model, molrepr, periodic, rdkit_io, style,
-               svgexport)
+               supercell, svgexport)
 from .ai_assistant import AiDock
 from .editor2d import Editor2D
 from .explorer import MoleculeExplorer
@@ -604,7 +604,7 @@ class MainWindow(QMainWindow):
         for axis, n in zip("abc", v.mol.cells):
             row.addWidget(QLabel(f"{axis}:"))
             sp = QSpinBox()
-            sp.setRange(1, 20)
+            sp.setRange(1, supercell.MAX_CELLS)
             sp.setValue(n)
             spins.append(sp)
             row.addWidget(sp)

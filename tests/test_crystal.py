@@ -426,3 +426,11 @@ def test_only_centred_svg_text_is_centred():
     anchors = [el.get("text-anchor") for el in root
                if el.tag.endswith("text")]
     assert anchors == ["middle", "start"]
+
+
+def test_the_cell_count_is_capped(qapp):
+    from khervemol.viewer3d import Viewer3D
+    v = Viewer3D()
+    v.set_molecule(library.make("simple_cubic"))
+    v.set_cells(99, 0, 3)
+    assert v.mol.cells == (supercell.MAX_CELLS, 1, 3)

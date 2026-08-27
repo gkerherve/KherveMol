@@ -23,6 +23,12 @@ the Free Software Foundation, either version 3 of the License, or
 
 from . import lattices
 
+#: Most cells per axis. Tiling is O(cells × atoms) and every rebuild
+#: re-adds every sphere and edge to the scene, so a 12³ BCC supercell
+#: (≈4000 atoms, 13000 edges) already takes seconds — past that the viewer
+#: stops being interactive, which is worse than not offering it.
+MAX_CELLS = 12
+
 #: Crystals that don't tile on their own lattice vectors. The HCP model is
 #: drawn as a full hexagonal prism (three cells' worth), so stacking it
 #: would interleave rather than repeat.
@@ -32,6 +38,11 @@ NO_STACK = {"hcp"}
 def can_stack(name, crystal=True):
     """Whether crystal *name* tiles into a supercell."""
     return bool(crystal) and name not in NO_STACK
+
+
+def clamp(cells):
+    """*cells* limited to the supported range."""
+    return tuple(max(1, min(MAX_CELLS, int(n))) for n in cells)
 
 
 def stack_factor(cells):

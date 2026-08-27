@@ -30,7 +30,7 @@ from PyQt5.QtWidgets import (QColorDialog, QComboBox, QGraphicsEllipseItem,
                              QLabel, QPushButton, QSlider, QSpinBox,
                              QToolButton, QVBoxLayout, QWidget)
 
-from . import dnd, elements, icons, model, molcolor, render
+from . import dnd, elements, icons, model, molcolor, render, supercell
 
 _HALF = math.pi / 2.0
 _W = 400.0                               # preview model-box size (scene units)
@@ -425,8 +425,12 @@ class Viewer3D(QWidget):
         self.cell_spins = []
         for axis in range(3):
             sp = QSpinBox()
-            sp.setRange(1, 20)
-            sp.setToolTip("Unit cells along %s" % "abc"[axis])
+            sp.setRange(1, supercell.MAX_CELLS)
+            # Without this, typing "12" would rebuild at 1 then 12 — and the
+            # intermediate rebuild of a large lattice is not free.
+            sp.setKeyboardTracking(False)
+            sp.setToolTip("Unit cells along %s (up to %d)"
+                          % ("abc"[axis], supercell.MAX_CELLS))
             sp.valueChanged.connect(self._on_cells)
             self.cell_spins.append(sp)
             keep(sp)
@@ -918,7 +922,7 @@ class Viewer3D(QWidget):
 
     def set_cells(self, nx, ny, nz):
         """Stack the crystal into an nx × ny × nz supercell."""
-        self.mol.cells = (int(nx), int(ny), int(nz))
+        self.mol.cells = supercell.clamp((nx, ny, nz))
         self.mol.prune_tilts()
         self.mol.rebuild()
         self.selection = []
