@@ -33,13 +33,15 @@ from PyQt5.QtWidgets import (QButtonGroup, QComboBox, QGraphicsScene,
                              QGraphicsView, QHBoxLayout, QLabel, QPushButton,
                              QToolButton, QVBoxLayout, QWidget)
 
-from . import dnd, elements
+from . import dnd, elements, molrepr
 
 _HIT = 15.0             # px pick radius for atoms
 _BOND_LEN = 46.0        # default new-bond length
 _BOND_LW = 2.3          # skeletal bond line width
 _MULTI_GAP = 4.5        # perpendicular offset between double/triple lines
 _LABEL_R = 10.0         # halo radius behind a drawn atom label
+_DOT_R = 1.6            # Lewis lone-pair dot radius
+_DOT_SPREAD = 2.6       # gap between the two dots of one pair
 
 #: MIME type for dragging a library compound onto the canvas ("kind|value").
 _DND_MIME = dnd.MIME_COMPOUND
@@ -104,8 +106,8 @@ class _Canvas(QGraphicsView):
         self._o.context_requested.emit(event.globalPos())
 
     def mousePressEvent(self, event):
-        if event.button() != Qt.LeftButton:
-            return
+        if event.button() != Qt.LeftButton or not self._o.editable:
+            return                      # Lewis / condensed are views only
         sp = self.mapToScene(event.pos())
         tool = self._o.tool
         ai = self._atom_at(sp)
@@ -274,15 +276,23 @@ class _Canvas(QGraphicsView):
         return True
 
     def redraw(self):
-        """Draw the graph as a proper 2D skeletal formula: thin bond lines
+        """Draw the graph in the current representation.
+
+        The default is a proper 2D skeletal formula: thin bond lines
         (double/triple as parallels), carbons as implicit vertices and
-        heteroatoms as CPK-coloured element labels. Hydrogens are hidden
-        (skeletal convention) unless 'All labels' is on."""
+        heteroatoms as CPK-coloured element labels, hydrogens hidden. The
+        other modes letter every atom (*structural*), add lone-pair dots
+        (*lewis*) or replace the drawing with the molecular formula
+        (*condensed*) — see `molrepr`."""
         sc = self.scene()
         sc.clear()
         self._preview = None
         atoms, bonds = self._o.atoms, self._o.bonds
-        show_all = self._o.show_labels
+        mode = self._o.mode
+        if mode == "condensed":
+            self._draw_condensed(atoms, bonds)
+            return
+        show_all = self._o.show_labels or molrepr.shows_all_labels(mode)
 
         pen = QPen(QColor("#1b1b1b"), _BOND_LW)
         pen.setCapStyle(Qt.RoundCap)
@@ -299,6 +309,30 @@ class _Canvas(QGraphicsView):
                 continue
             if self._labeled(idx, show_all):
                 self._draw_label(el, x, y)
+            if mode == "lewis":
+                self._draw_dots(idx, atoms, bonds)
+
+    def _draw_dots(self, idx, atoms, bonds):
+        """Lone-pair dots for atom *idx* (Lewis mode)."""
+        sc = self.scene()
+        for x, y in molrepr.dot_positions(idx, atoms, bonds,
+                                          _LABEL_R + _DOT_R * 2.2,
+                                          _DOT_SPREAD):
+            dot = sc.addEllipse(QRectF(x - _DOT_R, y - _DOT_R,
+                                       2 * _DOT_R, 2 * _DOT_R),
+                                QPen(Qt.NoPen), QColor("#1a1a1a"))
+            dot.setZValue(7)
+
+    def _draw_condensed(self, atoms, bonds):
+        """The molecular formula alone, centred — no structure drawn."""
+        if not atoms:
+            return
+        sc = self.scene()
+        txt = sc.addSimpleText(molrepr.hill_formula(atoms, bonds))
+        txt.setFont(QFont("Segoe UI", 28, QFont.Bold))
+        txt.setBrush(QColor("#1a1a1a"))
+        br = txt.boundingRect()
+        txt.setPos(-br.width() / 2.0, -br.height() / 2.0)
 
     def _draw_bond(self, x1, y1, x2, y2, order, gi, gj, pen):
         dx, dy = x2 - x1, y2 - y1
@@ -357,6 +391,10 @@ class Editor2D(QWidget):
         self.tool = "draw"
         self.element = "C"
         self.show_labels = False
+        #: How the graph is drawn — see `molrepr.MODES`. Only the two
+        #: structural modes are editable; Lewis and condensed are read-only
+        #: views of the same graph.
+        self.mode = "skeletal"
 
         root = QVBoxLayout(self)
         root.setContentsMargins(4, 4, 4, 4)
@@ -397,6 +435,17 @@ class Editor2D(QWidget):
         self.labels_btn.setCheckable(True)
         self.labels_btn.toggled.connect(self._toggle_labels)
         row.addWidget(self.labels_btn)
+        row.addSpacing(10)
+        row.addWidget(QLabel("Show as:"))
+        self.mode_combo = QComboBox()
+        for key in molrepr.MODES:
+            self.mode_combo.addItem(molrepr.MODE_LABELS[key], key)
+        self.mode_combo.setToolTip(
+            "How to draw the structure — skeletal, every atom lettered, a "
+            "Lewis structure with lone pairs, or just the formula")
+        self.mode_combo.currentIndexChanged.connect(
+            lambda i: self.set_mode(self.mode_combo.itemData(i)))
+        row.addWidget(self.mode_combo)
         clear = QPushButton("Clear")
         clear.clicked.connect(self.clear)
         row.addWidget(clear)
@@ -412,6 +461,30 @@ class Editor2D(QWidget):
     def _toggle_labels(self, on):
         self.show_labels = on
         self.canvas.redraw()
+
+    def set_mode(self, key):
+        """Switch the representation (`molrepr.MODES`). Lewis and condensed
+        are views, not editors — the tools are disabled there so a click
+        can't move an atom you can no longer see."""
+        if key not in molrepr.MODES:
+            return
+        self.mode = key
+        i = self.mode_combo.findData(key)
+        if i >= 0 and i != self.mode_combo.currentIndex():
+            self.mode_combo.blockSignals(True)
+            self.mode_combo.setCurrentIndex(i)
+            self.mode_combo.blockSignals(False)
+        editable = self.editable
+        for btn in self._tool_group.buttons():
+            btn.setEnabled(editable)
+        self.el_combo.setEnabled(editable)
+        self.canvas.redraw()
+        self._on_changed()
+
+    @property
+    def editable(self):
+        """Whether the current representation can be drawn on."""
+        return self.mode in ("skeletal", "structural")
 
     def _on_changed(self):
         self.status.setText(f"{len(self.atoms)} atoms, {len(self.bonds)} "
@@ -466,20 +539,9 @@ class Editor2D(QWidget):
         return img
 
     def formula(self):
-        counts = {}
-        for a in self.atoms:
-            counts[a[0]] = counts.get(a[0], 0) + 1
-        order = []
-        if "C" in counts:
-            order.append("C")
-        if "H" in counts:
-            order.append("H")
-        order += sorted(e for e in counts if e not in ("C", "H"))
-        out = ""
-        for e in order:
-            n = counts[e]
-            out += e + (str(n) if n > 1 else "")
-        return out
+        """Hill-notation formula, counting the hydrogens a skeletal drawing
+        leaves implicit — otherwise sketched ethanol would read C₂O."""
+        return molrepr.hill_formula(self.atoms, self.bonds)
 
 
 def icons_element(el):

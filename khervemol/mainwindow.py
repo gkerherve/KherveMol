@@ -19,7 +19,8 @@ from PyQt5.QtWidgets import (QAction, QActionGroup, QApplication, QDialog,
                              QVBoxLayout)
 
 from . import (__version__, catalog, dnd, document, elements, help as help_mod,
-               icons, library, model, periodic, rdkit_io, style, svgexport)
+               icons, library, model, molrepr, periodic, rdkit_io, style,
+               svgexport)
 from .ai_assistant import AiDock
 from .editor2d import Editor2D
 from .explorer import MoleculeExplorer
@@ -245,6 +246,17 @@ class MainWindow(QMainWindow):
         self._act(m_struct, "Build 3D from 2D sketch", self.build_3d_from_sketch,
                   "Ctrl+B")
         self._act(m_struct, "Clear 2D sketch", self.sketch.clear)
+        m_struct.addSeparator()
+        repr_menu = m_struct.addMenu("2D representation")
+        repr_group = QActionGroup(self)
+        for key in molrepr.MODES:
+            act = QAction(molrepr.MODE_LABELS[key], self)
+            act.setCheckable(True)
+            act.setChecked(key == "skeletal")
+            act.triggered.connect(
+                lambda _=False, k=key: self.sketch.set_mode(k))
+            repr_group.addAction(act)
+            repr_menu.addAction(act)
 
         m_view = mb.addMenu("&View")
         theme_menu = m_view.addMenu("Theme")
@@ -764,6 +776,13 @@ class MainWindow(QMainWindow):
                 label, lambda _=False, k=key: self.sketch.set_tool(k))
             act.setCheckable(True)
             act.setChecked(self.sketch.tool == key)
+        shown = m.addMenu("Show as")
+        for key in molrepr.MODES:
+            act = shown.addAction(
+                molrepr.MODE_LABELS[key],
+                lambda _=False, k=key: self.sketch.set_mode(k))
+            act.setCheckable(True)
+            act.setChecked(self.sketch.mode == key)
         m.addAction("Toggle all labels", self.sketch.labels_btn.toggle)
         m.addAction("Clear sketch", self.sketch.clear)
         m.addSeparator()
@@ -865,7 +884,8 @@ class MainWindow(QMainWindow):
         else:
             specs = svgexport.sketch_specs(self.sketch.atoms,
                                            self.sketch.bonds,
-                                           self.sketch.show_labels)
+                                           self.sketch.show_labels,
+                                           self.sketch.mode)
         specs, w, h = svgexport.normalize(specs)
         svgexport.save_specs(path, specs, w, h)
         self.statusBar().showMessage(

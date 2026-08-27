@@ -207,12 +207,20 @@ def normalize(specs, margin=24):
 
 
 # --------------------------------------------------------- 2D sketch → specs
-def sketch_specs(atoms, bonds, show_labels=False):
-    """Skeletal line+label specs for a 2D graph (atoms [el,x,y]), matching
-    the on-screen sketch — for SVG export of the 2D tab."""
+def sketch_specs(atoms, bonds, show_labels=False, mode="skeletal"):
+    """Line+label specs for a 2D graph (atoms [el,x,y]) in representation
+    *mode*, matching the on-screen sketch — for SVG export of the 2D tab."""
+    from . import molrepr
     gap = 13.0
     lw = 2.3
     sep = 4.5
+    dot_r = 1.6
+    if mode == "condensed":
+        if not atoms:
+            return []
+        return [{"shape": "text", "text": molrepr.hill_formula(atoms, bonds),
+                 "x": 0.0, "y": 0.0, "size": 34, "stroke": "#1a1a1a"}]
+    show_labels = show_labels or molrepr.shows_all_labels(mode)
 
     def deg(idx):
         return sum(1 for i, j, _o in bonds if idx in (i, j))
@@ -250,4 +258,11 @@ def sketch_specs(atoms, bonds, show_labels=False):
         if labeled(idx):
             specs.append({"shape": "text", "text": el, "x": x, "y": y,
                           "size": 15, "stroke": elements.color(el)})
+        if mode == "lewis":
+            for dx, dy in molrepr.dot_positions(idx, atoms, bonds,
+                                                gap + dot_r * 2.2, 2.6):
+                specs.append({"shape": "circle", "x": dx - dot_r,
+                              "y": dy - dot_r, "w": 2 * dot_r,
+                              "h": 2 * dot_r, "stroke": "none",
+                              "fill": "#1a1a1a"})
     return specs

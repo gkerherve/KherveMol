@@ -300,7 +300,8 @@ def test_editor2d_draw_and_bond(qapp):
     assert e.bonds == [[0, 1, 1]]
     e.canvas._add_or_cycle_bond(0, 1)          # cycles order
     assert e.bonds == [[0, 1, 2]]
-    assert e.formula() == "CO"
+    # the skeletal drawing implies two H on the carbon — it is formaldehyde
+    assert e.formula() == "CH₂O"
 
 
 def test_mainwindow_loads_and_syncs_2d(qapp):
