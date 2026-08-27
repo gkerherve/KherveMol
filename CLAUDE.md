@@ -55,6 +55,56 @@ module and import.
                      C=O 1.23 Å, C≡N 1.16 Å; unlisted pairs fall back to the
                      radius sum shrunk by bond order. `color/radius/valence/
                      name/number/text_color` fall back gracefully.
+  - `lattices.py`  — non-cubic **crystal geometry**: `lattice_vectors(a,b,c,
+                     α,β,γ)` → the three cell vectors (crystallographic
+                     convention: **a** along x, **b** in xy at γ), `cell()`
+                     building the parallelepiped (8 corners + 12 edges),
+                     `PARAMS`/`LATTICE_VECTORS`/`PARAM_TEXT` for the six
+                     systems (tetragonal, orthorhombic, hexagonal,
+                     rhombohedral, monoclinic, triclinic; builders named
+                     `_xtal_*` so `library.is_crystal` picks them up), plus
+                     `rotation(rx,ry,rz)` (a cell tilt) and
+                     `coordination_faces(pts)` (convex hull of a
+                     coordination shell — 8 triangles for an octahedron, 6
+                     squares for a cube).
+  - `supercell.py` — `tile(atoms,bonds,edges,nx,ny,nz,vectors,tilts,owners)`
+                     stacks a unit cell face-to-face along its **own**
+                     lattice vectors (the cubic family falls back to its
+                     wireframe extent), de-duplicating shared corner/face
+                     atoms, bonds and edges by rounded coordinate.
+                     **A tilt is a defect, not a detached grain**: atoms are
+                     laid on ONE node table keyed by the *untilted*
+                     position, then each node is displaced by the *average*
+                     rotation of the tilted cells that own it (untilted
+                     owners contribute 0) — so a tilted cell drags the atoms
+                     it shares with its neighbours, they deform to follow,
+                     and an isolated tilt stays rigid. `owners` records each
+                     atom's home cell (that is how clicking an atom picks a
+                     cell). `MAX_CELLS = 12` / `clamp` cap the size — tiling
+                     is O(cells × atoms) and every rebuild re-adds every
+                     sphere, so 12³ is already ~3 s.
+  - `molcolor.py`  — colours and polyhedra. Two mechanisms, matching how
+                     each structure is stored: an **editable molecule** owns
+                     its atoms, so a colour rides on the atom (optional 5th
+                     slot `[el,x,y,z,tint]`); a **crystal** is regenerated
+                     from its builder on every draw, so colours live in a
+                     map keyed by `color_key` — element + site tint (`"Fe"`
+                     vs `"Fe@#2f6fed"`), re-applied by `apply_colors`.
+                     `SITE_COLORS` tints the hidden lattice sites (body /
+                     face / inner / mid) that would otherwise vanish against
+                     identical corners. `coordination_polyhedra` /
+                     `has_polyhedra` build the VESTA-style translucent faces
+                     for every ≥4-coordinate atom; `legend_entries` /
+                     `legend_specs` are the colour key.
+  - `molrepr.py`   — 2D **representations** of a molecular graph:
+                     `MODES` = skeletal / structural / lewis / condensed.
+                     `implicit_hydrogens` + `hill_formula` count the H a
+                     skeletal drawing leaves implicit (a C–C–O sketch is
+                     C₂H₆O, not C₂O — that is what the status bar and the
+                     condensed drawing report), `lone_pairs` /
+                     `dot_positions` place Lewis dots on the directions
+                     farthest from any bond, and an implied H consumes a
+                     valence electron just as a drawn bond does.
   - `model.py`     — the geometry **engine**. Isometric `_proj`, the
                      depth-sorted `_model(atoms, bonds, edges, ...)` that
                      turns 3D coordinates into **shape specs** (circles =
@@ -82,7 +132,28 @@ module and import.
                      an atom (with everything hanging off it) onto a new
                      anchor. `angle(i,j,k)` (degrees, at j) and
                      `bond_between` serve the structure outline.
-  - `library.py`   — built-in structures. `_mol_*` / `_xtal_*` builders
+                     `_model(..., poly=True)` interleaves translucent
+                     coordination-polyhedron **polygons** into the same
+                     depth sort as the spheres (so a centre atom shows
+                     through its own front faces), and `colors=` applies a
+                     crystal's element/site override map. An atom's optional
+                     5th slot is its colour; `atom_specs(label=True)` emits
+                     a real centred **text** spec (the flag used to set a
+                     key nothing rendered).
+                     `Molecule` carries the **lattice state** — `cells`,
+                     `tilts`, `colors`, `poly` — plus `rebuild()` (regenerate
+                     a crystal for the current cells/tilts, refreshing
+                     `owners`), `cell_of`, `prune_tilts`, `can_stack` and
+                     `_frozen_fit` (a supercell's layout is anchored to its
+                     **untilted** geometry, else tilting one cell would
+                     chase its protruding corners and rescale the whole
+                     crystal).
+  - `library.py`   — built-in structures. `model_data(name, cells, tilts,
+                     owners)` tiles a crystal via `supercell.tile`;
+                     `can_stack` / `lattice_vectors` gate and steer it. The
+                     six `lattices.MODELS` join `_MODELS`/`LABELS` and the
+                     `Lattice systems` category. `_site()` places an atom on
+                     a hidden lattice site with its `SITE_COLORS` tint. `_mol_*` / `_xtal_*` builders
                      return `(atoms, bonds, edges)`; `make(name)` wraps one
                      in a `Molecule`. 30+ entries in `CATEGORIES`: simple
                      molecules, alcohols & acids, hydrocarbons, polymers
@@ -92,7 +163,8 @@ module and import.
                      cells; perovskite/zinc-blende include their internal
                      bonds). `is_crystal`/`default_bond`/`label`/`names`.
   - `render.py`    — shape-spec → `QGraphicsItem` (`spec_to_item`,
-                     `add_specs`) with the sun/linear/radial gradient
+                     `add_specs`; `polygon` + `opacity` for the polyhedra,
+                     and `anchor: "center"` on a text spec) with the sun/linear/radial gradient
                      brushes, and `render_image(specs, w, h)` which
                      rasterises via a temporary `QGraphicsScene` for PNG
                      export.
@@ -134,7 +206,17 @@ module and import.
                      — or replaces an empty view / a crystal), and
                      `reattach` serves the structure tree's drag. Crystals are
                      rotatable/zoomable but not atom-editable (`editable` =
-                     not crystal).
+                     not crystal) — though their atoms **are** tagged for
+                     hit-testing, since clicking one is how you pick a cell
+                     to tilt or a site to recolour.
+                     The **crystal panel**: a Supercell row (three spins,
+                     `set_cells` → `Molecule.rebuild`) and a Tilt-cell row
+                     (`set_tilt`, which re-selects an atom of the same cell
+                     because re-tiling renumbers them), both hidden for a
+                     molecule; plus `pick_color`/`reset_colors`, a `Legend`
+                     toggle (`_legend_specs`, drawn beside the model and
+                     included in export) and a `Polyhedra` toggle, all of
+                     which suit either kind of structure.
   - `dnd.py`       — drag-and-drop payloads: `MIME_COMPOUND` (a library leaf,
                      `"kind|value"`, dropped on either view) and `MIME_ATOM`
                      (a structure-tree row), plus `encode`/`decode`.
@@ -180,6 +262,11 @@ module and import.
                      increases that exceed an atom's valence. Right-click
                      emits `context_requested`. `image()` rasterises for
                      export.
+                     A **Show as** combo switches representation
+                     (`molrepr.MODES`); Lewis and condensed are read-only
+                     views (`editable` is False there, so a click cannot
+                     move an atom you can no longer see), and `formula()`
+                     counts implicit hydrogens.
                      `MainWindow._sync_sketch` mirrors the 3D `Molecule`
                      into it on load / build / 3D edit — via RDKit's clean
                      `Compute2DCoords` depiction when available, else
@@ -227,11 +314,18 @@ module and import.
                      Formula / molecular weight / atom counts come from the
                      element data (`elements.weight`, standard atomic
                      weights for all 118), so they always work; RDKit adds
-                     the rich descriptors. Crystals report a unit-cell
-                     composition.
+                     the rich descriptors. A crystal reports its **lattice**
+                     instead (`_crystal_rows`): lattice parameters,
+                     supercell and cell count, tilted cells, coordination
+                     number per element — and its mass row is "Mass drawn",
+                     since a lattice has no molar mass and a stacked cell's
+                     formula is not the stoichiometric unit.
   - `document.py`  — the `.kmol` JSON format (both the 3D `Molecule` incl.
-                     crystal edges + view, and the 2D sketch) and PNG
-                     export. `FORMAT_VERSION`.
+                     crystal edges + view + lattice state, and the 2D
+                     sketch) and PNG export. `FORMAT_VERSION` = 2 added
+                     `cells`/`tilts`/`colors`/`poly` and the per-atom colour
+                     slot; v1 still loads. A crystal is `rebuild()`-ed on
+                     load so `owners` comes back with it.
   - `svgexport.py` — **KhervePaint-compatible SVG** writer. `specs_to_svg`
                      turns shape specs into KhervePaint's own SVG shape
                      (spheres → `<ellipse>` with an `objectBoundingBox`
@@ -239,8 +333,12 @@ module and import.
                      `cx=0.35 cy=0.35 r=0.95 fx=0.25 fy=0.25`; bonds →
                      `<line>`), so a molecule opens in KhervePaint as
                      editable gradient-filled items (verified against
-                     `khervepaint.svgio.load_svg`). `sketch_specs` makes the
-                     2D skeletal line/label specs; `normalize` fits the
+                     `khervepaint.svgio.load_svg`). A `polygon` spec becomes KhervePaint's
+                     editable `PolygonItem`, and only `anchor: "center"` text is
+                     centred (it used to centre everything, which sat the
+                     legend's labels on top of their spheres).
+                     `sketch_specs(..., mode=)` makes the 2D line/label
+                     specs for the current `molrepr` mode; `normalize` fits the
                      viewBox. Wired to File ▸ Export SVG (Ctrl+Shift+E) and
                      both context menus.
   - `mainwindow.py`— `MainWindow` shell: a `QTabWidget` (3D View / 2D
@@ -353,9 +451,24 @@ it, **but the app must still run without it**: `rdkit_io.py` imports
 `rdkit_io.py` (guarded), get a menu item gated on `rdkit_io.available()`,
 and a test marked `skipif(not rdkit_io.available())`.
 
+## Adding a crystal / lattice system
+
+A cubic-family cell is an `_xtal_*` builder in `library.py` (see above). A
+system defined by lattice **parameters** goes in `lattices.PARAMS` instead
+— `(element, a, b, c, α, β, γ)` — and everything else follows: the builder,
+`LATTICE_VECTORS` (so `supercell.tile` stacks it in the right skewed
+orientation), the label, the parameter read-out and the registry entry.
+Put an atom on a **hidden site** (a body/face centre, an interior hole) with
+`library._site(atoms, el, p, site)`, never a plain `_add`: the same element
+as the corners is invisible against them without its `SITE_COLORS` tint.
+`tests/test_crystal.py` parametrises over the lattice systems and the
+stackable crystals, so a new entry is covered automatically.
+
 ## Roadmap
 
 - CIF → crystal import via RDKit / pymatgen (still guarded/optional).
+- User-editable lattice parameters (a, b, c, α, β, γ) on a loaded system,
+  persisted in the `.kmol` file, rather than the illustrative defaults.
 - Auto-generate 3D coordinates from a 2D sketch when RDKit is absent (a
   small built-in force field), so the tabs are fully bidirectional offline.
 - Measure tool (bond lengths / angles); multiple molecules per document.
