@@ -210,6 +210,8 @@ def _mol_cyclopentane():
     idx = [_add(atoms, "C", p) for p in ring]
     for k in range(5):
         bonds.append((idx[k], idx[(k + 1) % 5], 1))
+    for i in idx:                       # after the ring closes, so each C
+        _fill_h(atoms, bonds, i)        # sees both its neighbours
     return atoms, bonds, None
 
 
@@ -220,9 +222,18 @@ def _mol_glucose():
     idx = [_add(atoms, els[k], ring[k]) for k in range(6)]
     for k in range(6):
         bonds.append((idx[k], idx[(k + 1) % 6], 1))
-    for k in range(1, 6):               # a hydroxyl on every ring carbon
+    # β-D-glucopyranose: OH on C1-C4, and C5 carries the exocyclic CH2OH
+    # (the C6 that makes it a hexose). Ring hydrogens are capped last, once
+    # every substituent is on, so each carbon sees its real neighbours.
+    for k in range(1, 5):
         i_o = _grow(atoms, bonds, idx[k], "O")
         _grow(atoms, bonds, i_o, "H")
+    i_c6 = _grow(atoms, bonds, idx[5], "C")
+    i_o6 = _grow(atoms, bonds, i_c6, "O")
+    _grow(atoms, bonds, i_o6, "H")
+    for k in range(1, 6):
+        _fill_h(atoms, bonds, idx[k])
+    _fill_h(atoms, bonds, i_c6)
     return atoms, bonds, None
 
 
@@ -268,6 +279,10 @@ def _phenyl(atoms, bonds, anchor):
 
 
 def _add_substituent(atoms, bonds, c_i, sub):
+    if isinstance(sub, (list, tuple)):      # e.g. PTFE's two F per carbon
+        for one in sub:
+            _add_substituent(atoms, bonds, c_i, one)
+        return
     if sub in ("F", "Cl", "Br"):
         _grow(atoms, bonds, c_i, sub)
     elif sub == "OH":
@@ -580,7 +595,8 @@ _POLYMERS = {
     "polyethylene": lambda k: None,
     "polypropylene": lambda k: "CH3" if k % 2 == 0 else None,
     "pvc": lambda k: "Cl" if k % 2 == 0 else None,
-    "ptfe": lambda k: "F",
+    # PTFE is (CF2)n — two fluorines per backbone carbon, not one
+    "ptfe": lambda k: ("F", "F"),
     "polystyrene": lambda k: "phenyl" if k % 2 == 0 else None,
 }
 _POLYMER_LEN = 6

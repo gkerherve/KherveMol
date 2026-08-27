@@ -79,3 +79,33 @@ def test_bonded_atoms_are_not_on_top_of_each_other(name):
     mol = library.make(name)
     for i, j, _o in mol.bonds:
         assert model.distance(mol.atoms, i, j) > 0.5, f"{name}: atoms {i}-{j}"
+
+
+#: What each built-in molecule's formula must be (Hill notation, as
+#: `Molecule.formula` reports it). A model that draws the right shape but
+#: the wrong number of atoms is still the wrong molecule — cyclopentane
+#: once had no hydrogens at all, glucose only five carbons, and PTFE one
+#: fluorine per carbon instead of two.
+_FORMULAS = {
+    "water": "H2O", "ammonia": "H3N", "ammonium": "H4N", "methane": "CH4",
+    "carbon_dioxide": "CO2", "formaldehyde": "CH2O", "methanol": "CH4O",
+    "ethanol": "C2H6O", "acetic_acid": "C2H4O2", "glucose": "C6H12O6",
+    "ethane": "C2H6", "propane": "C3H8", "butane": "C4H10",
+    "ethene": "C2H4", "ethyne": "C2H2", "benzene": "C6H6",
+    "cyclopentane": "C5H10", "cyclohexane": "C6H12",
+    # six-carbon oligomers of each repeat unit, capped with hydrogen
+    "polyethylene": "C6H14", "polypropylene": "C9H20", "pvc": "C6H11Cl3",
+    "ptfe": "C6H2F12", "polystyrene": "C24H26", "pet": "C10H8O4",
+}
+
+
+@pytest.mark.parametrize("name,formula", sorted(_FORMULAS.items()))
+def test_a_built_in_molecule_has_the_formula_its_name_promises(name, formula):
+    assert library.make(name).formula() == formula
+
+
+def test_every_non_crystal_model_is_formula_checked():
+    """A new molecule must declare its formula, or this table stops being
+    a guard."""
+    molecules = {n for n in library.names() if not library.is_crystal(n)}
+    assert molecules == set(_FORMULAS)
