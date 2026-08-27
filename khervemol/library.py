@@ -16,10 +16,21 @@ the Free Software Foundation, either version 3 of the License, or
 
 import math
 
+from . import lattices, supercell
 from .model import (Molecule, TETRA, add, add_bonded_atom, cross, free_valence,
                     minus, perp, scale, plus, unit, DEFAULT_AZ, DEFAULT_EL)
+from .molcolor import SITE_COLORS
 
 _add, _scale, _plus = add, scale, plus
+
+
+def _site(atoms, el, p, site):
+    """Append an atom on a **hidden lattice site** — a body/face centre or
+    an interior tetrahedral hole. Same element as the corners means the
+    sphere would vanish against them, so it carries the site tint (the
+    optional 5th atom slot; see `molcolor`)."""
+    atoms.append((el, p[0], p[1], p[2], SITE_COLORS[site]))
+    return len(atoms) - 1
 
 
 def _grow(atoms, bonds, anchor, element, order=1):
@@ -401,22 +412,21 @@ def _xtal_simple_cubic():
 
 def _xtal_bcc():
     a = 3.0
-    pts = [("Fe", p) for p in _cube_corners(a)]
-    pts.append(("Fe", (a / 2, a / 2, a / 2)))
-    return _crystal(pts, a, extra_edges=_body_diagonals(a))
+    atoms = [("Fe", p[0], p[1], p[2]) for p in _cube_corners(a)]
+    _site(atoms, "Fe", (a / 2, a / 2, a / 2), "body")
+    return atoms, [], _cube_edges(a) + _body_diagonals(a)
 
 
 def _xtal_fcc():
     a = 3.0
-    pts = [("Al", p) for p in _cube_corners(a)]
-    faces = [(a / 2, a / 2, 0), (a / 2, a / 2, a), (a / 2, 0, a / 2),
-             (a / 2, a, a / 2), (0, a / 2, a / 2), (a, a / 2, a / 2)]
-    pts += [("Al", p) for p in faces]
+    atoms = [("Al", p[0], p[1], p[2]) for p in _cube_corners(a)]
+    for p in _face_centers(a):
+        _site(atoms, "Al", p, "face")
     c = _cube_corners(a)
     fdiag = [(c[0], c[2], "dash"), (c[4], c[6], "dash"),
              (c[0], c[5], "dash"), (c[3], c[6], "dash"),
              (c[0], c[7], "dash"), (c[1], c[6], "dash")]
-    return _crystal(pts, a, extra_edges=fdiag)
+    return atoms, [], _cube_edges(a) + fdiag
 
 
 def _xtal_hcp():
@@ -428,8 +438,8 @@ def _xtal_hcp():
             _add(atoms, "Mg", (r * math.cos(ang), r * math.sin(ang), z))
     for k in range(3):
         ang = math.radians(30 + k * 120)
-        _add(atoms, "Mg", (r * 0.58 * math.cos(ang),
-                           r * 0.58 * math.sin(ang), hz))
+        _site(atoms, "Mg", (r * 0.58 * math.cos(ang),
+                            r * 0.58 * math.sin(ang), hz), "mid")
     edges = []
     top = [(r * math.cos(math.radians(k * 60)),
             r * math.sin(math.radians(k * 60)), 0.0) for k in range(6)]
@@ -446,13 +456,9 @@ def _xtal_diamond():
     atoms = []
     for p in _cube_corners(a):
         _add(atoms, "C", p)
-    faces = [(a / 2, a / 2, 0), (a / 2, a / 2, a), (a / 2, 0, a / 2),
-             (a / 2, a, a / 2), (0, a / 2, a / 2), (a, a / 2, a / 2)]
-    for p in faces:
-        _add(atoms, "C", p)
-    inner = [(a / 4, a / 4, a / 4), (3 * a / 4, 3 * a / 4, a / 4),
-             (3 * a / 4, a / 4, 3 * a / 4), (a / 4, 3 * a / 4, 3 * a / 4)]
-    inner_idx = [_add(atoms, "C", p) for p in inner]
+    for p in _face_centers(a):
+        _site(atoms, "C", p, "face")
+    inner_idx = [_site(atoms, "C", p, "inner") for p in _tetra_interior(a)]
     bonds = []
     for ii in inner_idx:
         ip = (atoms[ii][1], atoms[ii][2], atoms[ii][3])
@@ -479,7 +485,7 @@ def _xtal_nacl():
 def _xtal_cscl():
     a = 3.0
     pts = [("Cl", p) for p in _cube_corners(a)]
-    pts.append(("Cs", (a / 2, a / 2, a / 2)))
+    pts.append(("Cs", (a / 2, a / 2, a / 2)))  # different element, no tint
     return _crystal(pts, a, extra_edges=_body_diagonals(a))
 
 
@@ -516,7 +522,7 @@ def _xtal_zincblende():
     for p in _cube_corners(a):
         _add(atoms, "S", p)
     for p in _face_centers(a):
-        _add(atoms, "S", p)
+        _site(atoms, "S", p, "face")
     zn_idx = [_add(atoms, "Zn", p) for p in _tetra_interior(a)]
     bonds = []
     for zi in zn_idx:
@@ -538,7 +544,7 @@ def _xtal_fluorite():
     for p in _cube_corners(a):
         _add(atoms, "Ca", p)
     for p in _face_centers(a):
-        _add(atoms, "Ca", p)
+        _site(atoms, "Ca", p, "face")
     for x in (a / 4, 3 * a / 4):
         for y in (a / 4, 3 * a / 4):
             for z in (a / 4, 3 * a / 4):
@@ -610,7 +616,13 @@ CATEGORIES = [
     ("Crystal structures",
      ["simple_cubic", "bcc", "fcc", "hcp", "diamond", "nacl", "cscl",
       "zincblende", "fluorite", "perovskite"]),
+    lattices.CATEGORY,
 ]
+
+# The seven non-cubic crystal systems join the registry as ordinary models;
+# their `_xtal_*` builder names give them crystal handling for free.
+_MODELS.update(lattices.MODELS)
+LABELS.update(lattices.LABELS)
 
 #: Default bond spread for molecules (>1 so sticks read); crystals stay 1.0.
 DEFAULT_BOND = 1.6
@@ -632,13 +644,34 @@ def names():
     return out
 
 
-def model_data(name):
-    """Return ``(atoms, bonds, edges, rscale)`` for a named model."""
+def can_stack(name):
+    """Whether *name* is a crystal that tiles into a supercell."""
+    return supercell.can_stack(name, is_crystal(name))
+
+
+def lattice_vectors(name):
+    """The three cell vectors *name* stacks along, or None for the cubic
+    family (which falls back to its wireframe extent)."""
+    return lattices.LATTICE_VECTORS.get(name)
+
+
+def model_data(name, cells=None, tilts=None, owners=None):
+    """Return ``(atoms, bonds, edges, rscale)`` for a named model.
+
+    A crystal tiles into an ``nx × ny × nz`` supercell when *cells* is
+    given; *tilts* rotates chosen cells about their own centre and *owners*
+    (a list) collects each atom's home cell — see `supercell.tile`."""
     if name in _POLYMERS:
         atoms, bonds, edges = _polymer_atoms(_POLYMER_LEN, _POLYMERS[name])
         return atoms, bonds, edges, 0.92
     builder, rscale = _MODELS[name]
     atoms, bonds, edges = builder()
+    if cells and can_stack(name) and tuple(cells) != (1, 1, 1):
+        atoms, bonds, edges = supercell.tile(
+            atoms, bonds, edges, *cells, vectors=lattice_vectors(name),
+            tilts=tilts, owners=owners)
+    elif owners is not None:
+        owners.extend(["0,0,0"] * len(atoms))
     return atoms, bonds, edges, rscale
 
 

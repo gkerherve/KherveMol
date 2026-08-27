@@ -124,6 +124,18 @@ def specs_to_svg(specs, width, height, dpi=96):
                 el.set("fill", _hex(fill))
             else:
                 el.set("fill", "none")
+        elif shape == "polygon":
+            # KhervePaint reads <polygon> as an editable PolygonItem, so a
+            # coordination polyhedron stays a set of movable faces there.
+            el = ET.SubElement(root, _svg("polygon"))
+            el.set("points", " ".join(f"{float(px):g},{float(py):g}"
+                                      for px, py in spec.get("points", [])))
+            _stroke(el, spec)
+            fill = spec.get("fill")
+            el.set("fill", _hex(fill) if fill and str(fill).lower() != "none"
+                   else "none")
+            if "opacity" in spec:
+                el.set("fill-opacity", f"{float(spec['opacity']):g}")
         elif shape == "text":
             el = ET.SubElement(root, _svg("text"))
             el.set("x", f"{float(spec.get('x', 0)):g}")
@@ -156,6 +168,10 @@ def bounds(specs):
         elif sh in ("circle", "ellipse"):
             xs += [s["x"], s["x"] + s["w"]]
             ys += [s["y"], s["y"] + s["h"]]
+        elif sh == "polygon":
+            for px, py in s.get("points", []):
+                xs.append(px)
+                ys.append(py)
         elif sh == "text":
             xs.append(s["x"])
             ys.append(s["y"])
@@ -181,6 +197,8 @@ def normalize(specs, margin=24):
         elif sh in ("circle", "ellipse"):
             s["x"] += dx
             s["y"] += dy
+        elif sh == "polygon":
+            s["points"] = [[px + dx, py + dy] for px, py in s["points"]]
         elif sh == "text":
             s["x"] += dx
             s["y"] += dy
