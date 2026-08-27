@@ -78,9 +78,14 @@ module and import.
                      rotation of the tilted cells that own it (untilted
                      owners contribute 0) — so a tilted cell drags the atoms
                      it shares with its neighbours, they deform to follow,
-                     and an isolated tilt stays rigid. `owners` records each
-                     atom's home cell (that is how clicking an atom picks a
-                     cell). `MAX_CELLS = 12` / `clamp` cap the size — tiling
+                     and an isolated tilt stays rigid. Two membership
+                     views come back: `owners` gives each atom ONE home cell
+                     (how clicking an atom picks a cell) and `members` gives
+                     each cell ALL its atoms, shared corners included (how a
+                     whole cell is outlined). Atom order is keyed by the
+                     *untilted* position, so **a tilt never renumbers** —
+                     only a change of cell counts does.
+                     `MAX_CELLS = 12` / `clamp` cap the size — tiling
                      is O(cells × atoms) and every rebuild re-adds every
                      sphere, so 12³ is already ~3 s.
   - `molcolor.py`  — colours and polyhedra. Two mechanisms, matching how
@@ -143,7 +148,9 @@ module and import.
                      `Molecule` carries the **lattice state** — `cells`,
                      `tilts`, `colors`, `poly` — plus `rebuild()` (regenerate
                      a crystal for the current cells/tilts, refreshing
-                     `owners`), `cell_of`, `prune_tilts`, `can_stack` and
+                     `owners`/`members`), `cell_of` (one home cell),
+                     `cell_members` (the whole cell), `prune_tilts`,
+                     `can_stack` and
                      `_frozen_fit` (a supercell's layout is anchored to its
                      **untilted** geometry, else tilting one cell would
                      chase its protruding corners and rescale the whole
@@ -211,9 +218,15 @@ module and import.
                      to tilt or a site to recolour.
                      The **crystal panel**: a Supercell row (three spins,
                      `set_cells` → `Molecule.rebuild`) and a Tilt-cell row
-                     (`set_tilt`, which re-selects an atom of the same cell
-                     because re-tiling renumbers them), both hidden for a
-                     molecule; plus `pick_color`/`reset_colors`, a `Legend`
+                     (`set_tilt`, which **keeps the selection** — a tilt
+                     does not renumber, so the atom you picked stays picked
+                     and the next spin turn hits the same cell; only a tilt
+                     applied from a menu picks an atom, and it must be one
+                     the cell *owns* or a shared corner would redirect the
+                     next turn), both hidden for a molecule;
+                     `tilt_cell`/`tilt_cell_atoms` say which cell would
+                     rotate, and `_View.rebuild` rings it in dashed orange
+                     so the target is visible before you turn anything; plus `pick_color`/`reset_colors`, a `Legend`
                      toggle (`_legend_specs`, drawn beside the model and
                      included in export) and a `Polyhedra` toggle, all of
                      which suit either kind of structure.

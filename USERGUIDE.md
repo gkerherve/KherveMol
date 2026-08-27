@@ -107,8 +107,16 @@ shares its corner and face atoms with its neighbours, so those neighbours
 deform to follow it and the lattice stays connected. Nothing is
 duplicated, and a cell no tilted neighbour touches does not move at all.
 
-Click an atom of the cell you want to tilt first — the boxes then show
-that cell's current tilt. **Reset tilts** straightens everything.
+Click an atom of the cell you want to tilt first. The rest of that cell is
+then **outlined in orange**, so you can see which cell the boxes will
+rotate before you turn them — a corner is shared between neighbouring
+cells, and the outline says which of them counts as yours. The boxes show
+that cell's current tilt.
+
+Your selected atom **stays selected** as you turn the boxes: a tilt moves
+atoms but never renumbers them, so the green ring stays on the atom you
+picked and each further turn keeps rotating the same cell. **Reset tilts**
+straightens everything.
 
 Right-clicking a crystal offers the same actions on the cell you clicked.
 

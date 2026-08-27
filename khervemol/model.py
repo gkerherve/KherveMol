@@ -721,8 +721,10 @@ class Molecule:
     ``colors`` overrides the colour of an element/site (a crystal is
     regenerated from its builder, so its colours can't ride on the atoms)
     and ``poly`` draws coordination polyhedra. `rebuild` regenerates the
-    atoms for the current lattice state and fills ``owners`` — the home
-    cell of each atom, which is how clicking an atom picks a cell."""
+    atoms for the current lattice state and fills two membership tables:
+    ``owners`` gives each atom one home cell (how clicking an atom picks a
+    cell) and ``members`` gives each cell all of its atoms, shared corners
+    included (how a whole cell is highlighted)."""
 
     def __init__(self, atoms=None, bonds=None, name="custom", label=None,
                  az=None, el=None, bond=None, rscale=0.92, crystal=False,
@@ -742,6 +744,7 @@ class Molecule:
         self.colors = dict(colors or {})
         self.poly = bool(poly)
         self.owners = ["0,0,0"] * len(self.atoms)
+        self.members = {"0,0,0": list(range(len(self.atoms)))}
 
     def clone(self):
         return Molecule(self.atoms, self.bonds, self.name, self.label,
@@ -767,21 +770,30 @@ class Molecule:
         from . import library
         if not self.crystal or self.name not in library.LABELS:
             return
-        owners = []
+        owners, members = [], {}
         atoms, bonds, edges, rscale = library.model_data(
             self.name, self.cells if self.stacked else None,
-            tilts=self.tilts, owners=owners)
+            tilts=self.tilts, owners=owners, members=members)
         self.atoms = [list(a) for a in atoms]
         self.bonds = [list(b) for b in bonds]
         self.edges = list(edges) if edges else None
         self.rscale = rscale
         self.owners = owners
+        self.members = members
 
     def cell_of(self, index):
-        """The ``"i,j,k"`` cell atom *index* belongs to."""
-        if 0 <= index < len(self.owners):
+        """The ``"i,j,k"`` cell atom *index* belongs to.
+
+        A corner shared between cells belongs to all of them; this names
+        the first, which is the one a tilt would rotate."""
+        if index is not None and 0 <= index < len(self.owners):
             return self.owners[index]
         return "0,0,0"
+
+    def cell_members(self, key):
+        """Every atom index in cell *key* — the shared corners included, so
+        this is the whole cell as drawn, not just the atoms it created."""
+        return list(self.members.get(key, ()))
 
     def prune_tilts(self):
         """Drop tilts that now point outside the supercell."""

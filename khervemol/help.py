@@ -110,10 +110,13 @@ each lattice vector. Cells stack along their <i>own</i> vectors, so a
 hexagonal or monoclinic supercell leans the way the crystal really does.
 Atoms, bonds and cell edges shared between neighbours are drawn once.</li>
 <li><b>Tilt</b> — click an atom, then use the <b>Tilt cell</b> boxes to
-rotate its unit cell. A tilt is a <b>defect, not a detached grain</b>: the
-tilted cell shares its corner and face atoms with its neighbours, so they
-deform to follow and the lattice stays connected — nothing is duplicated,
-and a cell no tilted neighbour touches does not move at all.</li>
+rotate its unit cell. The rest of that cell is outlined in orange, so you
+can see which cell will move before you turn the boxes; your atom stays
+selected as you turn them, so each further turn rotates the same cell.
+A tilt is a <b>defect, not a detached grain</b>: the tilted cell shares its
+corner and face atoms with its neighbours, so they deform to follow and the
+lattice stays connected — nothing is duplicated, and a cell no tilted
+neighbour touches does not move at all.</li>
 <li><b>Right-click a crystal</b> for the same actions on the cell you
 clicked.</li>
 </ul>

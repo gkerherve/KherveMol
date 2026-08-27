@@ -44,6 +44,7 @@ STANDARD_VIEWS = [
 
 _SEL_COLOR = "#159c74"                   # the primary (last-clicked) atom
 _CO_SEL_COLOR = "#7fbf3f"                # other Ctrl-selected atoms
+_CELL_COLOR = "#d98324"                  # the rest of the cell a tilt moves
 
 
 class _View(QGraphicsView):
@@ -78,18 +79,32 @@ class _View(QGraphicsView):
         scene = self.scene()
         scene.clear()
         specs = o.render_specs(_W, _W, frozen=self._frozen)
-        sel_items = {}
+        # On a stacked crystal, ring the whole cell the tilt boxes would
+        # rotate — otherwise you can only guess which of the cells sharing
+        # the atom you clicked is about to move.
+        cell = set(o.tilt_cell_atoms()) if o.mol.stacked else set()
+        sel_items, cell_items = {}, {}
         for spec in specs:
             item = render.spec_to_item(spec)
             if item is None:
                 continue
             scene.addItem(item)
             if "_atom" in spec:
-                item.setData(0, spec["_atom"])
-                if spec["_atom"] in o.selection:
-                    sel_items[spec["_atom"]] = item
+                idx = spec["_atom"]
+                item.setData(0, idx)
+                if idx in o.selection:
+                    sel_items[idx] = item
+                elif idx in cell:
+                    cell_items[idx] = item
             elif "_bond" in spec:
                 item.setData(1, spec["_bond"])
+        for item in cell_items.values():
+            r = item.sceneBoundingRect().adjusted(-2, -2, 2, 2)
+            ring = QGraphicsEllipseItem(r)
+            pen = QPen(QColor(_CELL_COLOR), 2)
+            pen.setStyle(Qt.DashLine)
+            ring.setPen(pen)
+            scene.addItem(ring)
         for idx, item in sel_items.items():
             primary = idx == o.selected
             r = item.sceneBoundingRect().adjusted(-3, -3, 3, 3)
@@ -856,7 +871,8 @@ class Viewer3D(QWidget):
                                                                       ", ")
             bits.append(f"selected {atom[0]}{where}{cell} — Atom colour… "
                         f"recolours every {atom[0]} on this site"
-                        + (", Tilt cell rotates that cell" if cell else ""))
+                        + (", Tilt cell rotates the outlined cell"
+                           if cell else ""))
         else:
             bits.append("drag to rotate, wheel to zoom; click an atom to "
                         "recolour it or pick its cell")
@@ -937,16 +953,25 @@ class Viewer3D(QWidget):
         self.set_cells(*(sp.value() for sp in self.cell_spins))
 
     def set_tilt(self, cell_key, angles):
-        """Tilt one unit cell (a ``"i,j,k"`` key) by (rx, ry, rz) degrees."""
+        """Tilt one unit cell (a ``"i,j,k"`` key) by (rx, ry, rz) degrees.
+
+        The **selection is kept**: a tilt moves atoms but never renumbers
+        them (the tiler keys them by their untilted position), so the atom
+        you picked is still that index — and keeping it there is what makes
+        the next turn of the spin box rotate the same cell again."""
         if any(angles):
             self.mol.tilts[cell_key] = [int(v) for v in angles]
         else:
             self.mol.tilts.pop(cell_key, None)
         self.mol.rebuild()
-        # Re-tiling renumbers the atoms, so re-select an atom of the SAME
-        # cell — otherwise the next spin tick would tilt a different one.
-        self.selection = [i for i, o in enumerate(self.mol.owners)
-                          if o == cell_key][:1]
+        if self.selected is None or self.mol.cell_of(self.selected) != cell_key:
+            # Tilted from a menu or a file rather than from the selected
+            # atom — select one of that cell so the ring shows what moved.
+            # It has to be an atom that cell *owns*: a shared corner names
+            # the first cell touching it, so picking one would point the
+            # next turn of the spin box at a different cell.
+            self.selection = [i for i in self.mol.cell_members(cell_key)
+                              if self.mol.cell_of(i) == cell_key][:1]
         # The spins are the source when the user turns them, but not when a
         # menu or a reload sets the tilt — show what the cell actually has.
         self._show_tilt(self.mol.tilts.get(cell_key))
@@ -954,6 +979,19 @@ class Viewer3D(QWidget):
         self._update_status()
         self.structure_changed.emit()
         self.selection_changed.emit()
+
+    def tilt_cell(self):
+        """The cell a tilt would rotate right now — the selected atom's."""
+        if self.selected is None or not self.mol.can_stack:
+            return None
+        return self.mol.cell_of(self.selected)
+
+    def tilt_cell_atoms(self):
+        """Every atom of that cell, so the viewer can outline it. A shared
+        corner belongs to several cells; this is the one that would move
+        rigidly, which is what the user is choosing."""
+        key = self.tilt_cell()
+        return self.mol.cell_members(key) if key else []
 
     def _on_tilt(self):
         idx = self.selected

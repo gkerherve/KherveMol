@@ -278,15 +278,41 @@ def test_setting_cells_from_the_viewer_tiles_the_crystal(qapp):
     assert [sp.value() for sp in v.cell_spins] == [2, 2, 2]
 
 
-def test_tilting_keeps_a_cell_of_the_same_atom_selected(qapp):
-    """Re-tiling renumbers the atoms, so the viewer must re-select an atom
-    of the tilted cell — otherwise the next spin tick hits another cell."""
+def test_tilting_keeps_the_atom_you_selected(qapp):
+    """A tilt moves atoms but never renumbers them, so the atom you picked
+    must still be the selected one afterwards — the ring should not jump to
+    some other atom of the cell."""
+    v = _viewer(qapp)
+    v.set_molecule(library.make("bcc"))
+    v.set_cells(2, 2, 2)
+    centre = next(i for i in v.mol.cell_members("1,1,1")
+                  if v.mol.cell_of(i) == "1,1,1"
+                  and molcolor.tint(v.mol.atoms[i]))
+    v.select_atom(centre)
+    element = v.mol.atoms[centre][0]
+    for step in (5, 10, 20):
+        v.set_tilt(v.mol.cell_of(v.selected), (step, 0, 0))
+        assert v.selected == centre               # same atom, every time
+        assert v.mol.atoms[centre][0] == element
+        assert v.mol.tilts == {"1,1,1": [step, 0, 0]}
+    v.reset_tilts()
+    assert v.mol.tilts == {}
+
+
+def test_a_tilt_from_a_menu_selects_an_atom_that_cell_owns(qapp):
+    """With nothing selected the viewer picks an atom of the tilted cell —
+    it must be one that cell *owns*, or the next turn of the spin box would
+    read a shared corner and rotate a different cell."""
     v = _viewer(qapp)
     v.set_molecule(library.make("simple_cubic"))
     v.set_cells(2, 1, 1)
     v.set_tilt("1,0,0", (15, 0, 0))
     assert v.mol.tilts == {"1,0,0": [15, 0, 0]}
+    assert v.selected is not None
     assert v.mol.cell_of(v.selected) == "1,0,0"
+    # turning the spins again must stay on that cell
+    v.set_tilt(v.mol.cell_of(v.selected), (25, 0, 0))
+    assert v.mol.tilts == {"1,0,0": [25, 0, 0]}
     v.reset_tilts()
     assert v.mol.tilts == {}
 
@@ -447,3 +473,79 @@ def test_the_tilt_spins_show_the_cell_they_land_on(qapp):
     assert [sp.value() for sp in v.tilt_spins] == [20, 15, 0]
     v.reset_tilts()
     assert [sp.value() for sp in v.tilt_spins] == [0, 0, 0]
+
+
+# ------------------------------------------------------- which cell tilts
+def test_a_tilt_does_not_renumber_the_atoms():
+    """The tiler keys atoms by their *untilted* position, so the output
+    order is the same tilted or not — which is what lets a selection
+    survive a tilt."""
+    o1, o2 = [], []
+    plain = library.model_data("bcc", (2, 2, 2), owners=o1)[0]
+    tilted = library.model_data("bcc", (2, 2, 2), tilts={"1,1,1": (25, 10, 0)},
+                                owners=o2)[0]
+    assert len(plain) == len(tilted)
+    assert o1 == o2
+    assert [a[0] for a in plain] == [a[0] for a in tilted]
+
+
+def test_members_lists_every_atom_of_a_cell_shared_corners_included():
+    members = {}
+    atoms = library.model_data("simple_cubic", (2, 1, 1), members=members)[0]
+    assert set(members) == {"0,0,0", "1,0,0"}
+    assert len(members["0,0,0"]) == 8 and len(members["1,0,0"]) == 8
+    shared = set(members["0,0,0"]) & set(members["1,0,0"])
+    assert len(shared) == 4                   # the face they meet on
+    assert set(members["0,0,0"]) | set(members["1,0,0"]) == set(range(len(atoms)))
+
+
+def test_an_unstacked_cell_still_reports_its_members():
+    mol = library.make("perovskite")
+    assert mol.cell_members("0,0,0") == list(range(len(mol.atoms)))
+
+
+def test_owners_names_one_cell_but_members_names_them_all():
+    mol = library.make("simple_cubic")
+    mol.cells = (2, 1, 1)
+    mol.rebuild()
+    shared = set(mol.cell_members("0,0,0")) & set(mol.cell_members("1,0,0"))
+    for i in shared:
+        assert mol.cell_of(i) == "0,0,0"      # one home cell per atom
+        assert i in mol.cell_members("1,0,0")  # but it is in both cells
+
+
+def test_the_viewer_reports_the_cell_a_tilt_would_move(qapp):
+    from khervemol.viewer3d import Viewer3D
+    v = Viewer3D()
+    v.set_molecule(library.make("bcc"))
+    v.set_cells(2, 2, 2)
+    assert v.tilt_cell() is None               # nothing selected yet
+    assert v.tilt_cell_atoms() == []
+    body = next(i for i in v.mol.cell_members("1,1,1")
+                if v.mol.cell_of(i) == "1,1,1"
+                and molcolor.tint(v.mol.atoms[i]))
+    v.select_atom(body)
+    assert v.tilt_cell() == "1,1,1"
+    assert set(v.tilt_cell_atoms()) == set(v.mol.cell_members("1,1,1"))
+    assert body in v.tilt_cell_atoms()
+
+
+def test_a_molecule_has_no_tilt_cell(qapp):
+    from khervemol.viewer3d import Viewer3D
+    v = Viewer3D()
+    v.set_molecule(library.make("ethanol"))
+    v.select_atom(0)
+    assert v.tilt_cell() is None
+    assert v.tilt_cell_atoms() == []
+
+
+def test_changing_the_cell_count_clears_a_stale_selection(qapp):
+    """Cell counts *do* renumber, so the old index would point anywhere."""
+    from khervemol.viewer3d import Viewer3D
+    v = Viewer3D()
+    v.set_molecule(library.make("simple_cubic"))
+    v.set_cells(3, 3, 3)
+    v.select_atom(len(v.mol.atoms) - 1)
+    v.set_cells(1, 1, 1)
+    assert v.selected is None
+    assert all(i < len(v.mol.atoms) for i in v.selection)

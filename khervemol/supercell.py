@@ -68,7 +68,7 @@ def in_range(key, cells):
 
 
 def tile(atoms, bonds, edges, nx, ny, nz, vectors=None, tilts=None,
-         owners=None):
+         owners=None, members=None):
     """Tile a unit cell into an ``nx × ny × nz`` supercell.
 
     Cells translate along *vectors* — the lattice's three cell vectors —
@@ -78,10 +78,20 @@ def tile(atoms, bonds, edges, nx, ny, nz, vectors=None, tilts=None,
     extent along x/y/z (the cube edge length).
 
     *tilts* maps ``"i,j,k"`` cell keys to ``(rx, ry, rz)`` degrees (see the
-    module docstring for what a tilt means). *owners*, when a list is
-    passed, is filled in place with the ``"i,j,k"`` cell that first created
-    each output atom — that's what lets the UI pick a cell by clicking one
-    of its atoms.
+    module docstring for what a tilt means).
+
+    Two views of cell membership come back when a list / dict is passed in:
+    *owners* gets the ``"i,j,k"`` cell that **first created** each output
+    atom — one cell per atom, which is what the UI needs to answer "click
+    an atom, which cell is that?" — while *members* maps each cell key to
+    **every** atom index in it, shared corners included, so the whole cell
+    can be highlighted or measured. An atom appears once in *owners* and in
+    as many *members* lists as there are cells touching it.
+
+    The output ordering does **not** depend on *tilts*: atoms are keyed by
+    their untilted position, so a tilt moves atoms without renumbering
+    them, and a selection survives one. Changing the cell counts does
+    renumber.
 
     Returns ``(atoms, bonds, edges)`` for the whole supercell."""
     edges = list(edges or [])
@@ -178,6 +188,8 @@ def tile(atoms, bonds, edges, nx, ny, nz, vectors=None, tilts=None,
                         if owners is not None:
                             owners.append(owner[nk])
                     remap[oi] = seen_atom[nk]
+                if members is not None:
+                    members["%d,%d,%d" % (i, j, k)] = sorted(set(remap.values()))
                 for bond in bonds:
                     bi, bj, bo = bond[0], bond[1], bond[2]
                     a, b = remap[bi], remap[bj]

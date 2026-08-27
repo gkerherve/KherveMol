@@ -671,12 +671,13 @@ def lattice_vectors(name):
     return lattices.LATTICE_VECTORS.get(name)
 
 
-def model_data(name, cells=None, tilts=None, owners=None):
+def model_data(name, cells=None, tilts=None, owners=None, members=None):
     """Return ``(atoms, bonds, edges, rscale)`` for a named model.
 
     A crystal tiles into an ``nx × ny × nz`` supercell when *cells* is
-    given; *tilts* rotates chosen cells about their own centre and *owners*
-    (a list) collects each atom's home cell — see `supercell.tile`."""
+    given; *tilts* rotates chosen cells about their own centre, *owners*
+    (a list) collects each atom's home cell and *members* (a dict) every
+    cell's full atom list — see `supercell.tile`."""
     if name in _POLYMERS:
         atoms, bonds, edges = _polymer_atoms(_POLYMER_LEN, _POLYMERS[name])
         return atoms, bonds, edges, 0.92
@@ -685,9 +686,12 @@ def model_data(name, cells=None, tilts=None, owners=None):
     if cells and can_stack(name) and tuple(cells) != (1, 1, 1):
         atoms, bonds, edges = supercell.tile(
             atoms, bonds, edges, *cells, vectors=lattice_vectors(name),
-            tilts=tilts, owners=owners)
-    elif owners is not None:
-        owners.extend(["0,0,0"] * len(atoms))
+            tilts=tilts, owners=owners, members=members)
+    else:
+        if owners is not None:
+            owners.extend(["0,0,0"] * len(atoms))
+        if members is not None:
+            members["0,0,0"] = list(range(len(atoms)))
     return atoms, bonds, edges, rscale
 
 
