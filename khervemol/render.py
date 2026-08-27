@@ -100,8 +100,14 @@ def spec_to_item(spec):
         item = QGraphicsSimpleTextItem(str(spec.get("text", "")))
         item.setBrush(QBrush(QColor(spec.get("stroke", "#1a1a1a"))))
         font = QFont("Segoe UI", int(spec.get("size", 12)))
+        font.setBold(bool(spec.get("bold", True)))
         item.setFont(font)
-        item.setPos(float(spec.get("x", 0)), float(spec.get("y", 0)))
+        x, y = float(spec.get("x", 0)), float(spec.get("y", 0))
+        if str(spec.get("anchor", "")).lower() == "center":
+            box = item.boundingRect()       # (x, y) is the centre, not the
+            x -= box.width() / 2.0          # top-left corner
+            y -= box.height() / 2.0
+        item.setPos(x, y)
         return item
     return None
 

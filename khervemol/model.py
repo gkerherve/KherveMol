@@ -55,9 +55,16 @@ def atom_specs(cx, cy, r, element, label=False, color=None):
             "w": 2 * r, "h": 2 * r, "stroke": stroke,
             "width": max(0.8, r * 0.10),
             "fill": {"kind": "sun", "c1": rim, "c2": hi}}
-    if label:
-        spec["label"] = element
-    return [spec]
+    if not label:
+        return [spec]
+    # The symbol goes on top of the ball, in whichever of black/white reads
+    # against the body colour.
+    luma = (0.299 * QColor(body).red() + 0.587 * QColor(body).green()
+            + 0.114 * QColor(body).blue()) / 255.0
+    ink = "#161616" if luma > 0.6 else "#ffffff"
+    return [spec, {"shape": "text", "text": element, "x": cx, "y": cy,
+                   "anchor": "center", "size": max(6, int(r * 0.85)),
+                   "stroke": ink}]
 
 
 def bond_specs(p1, p2, order=1, width=6.0, color=_BOND_COLOR):

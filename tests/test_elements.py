@@ -39,3 +39,7 @@ def test_table_covers_every_element_once():
 def test_text_colour_is_readable():
     assert elements.text_color("H") == "#111"      # white sphere -> dark ink
     assert elements.text_color("C") == "#fff"      # dark sphere -> light ink
+    # judged on perceived brightness: a saturated blue is dark to the eye
+    # even though its HSL lightness is over half
+    assert elements.text_color("N") == "#fff"
+    assert elements.text_color("S") == "#111"

@@ -140,8 +140,9 @@ def specs_to_svg(specs, width, height, dpi=96):
             el = ET.SubElement(root, _svg("text"))
             el.set("x", f"{float(spec.get('x', 0)):g}")
             el.set("y", f"{float(spec.get('y', 0)):g}")
-            el.set("text-anchor", "middle")
-            el.set("dominant-baseline", "central")
+            centred = str(spec.get("anchor", "")).lower() == "center"
+            el.set("text-anchor", "middle" if centred else "start")
+            el.set("dominant-baseline", "central" if centred else "hanging")
             el.set("font-family", "Segoe UI, sans-serif")
             el.set("font-size", f"{float(spec.get('size', 14)):g}")
             el.set("font-weight", "bold")
@@ -219,7 +220,8 @@ def sketch_specs(atoms, bonds, show_labels=False, mode="skeletal"):
         if not atoms:
             return []
         return [{"shape": "text", "text": molrepr.hill_formula(atoms, bonds),
-                 "x": 0.0, "y": 0.0, "size": 34, "stroke": "#1a1a1a"}]
+                 "x": 0.0, "y": 0.0, "anchor": "center", "size": 34,
+                 "stroke": "#1a1a1a"}]
     show_labels = show_labels or molrepr.shows_all_labels(mode)
 
     def deg(idx):
@@ -257,7 +259,8 @@ def sketch_specs(atoms, bonds, show_labels=False, mode="skeletal"):
             continue
         if labeled(idx):
             specs.append({"shape": "text", "text": el, "x": x, "y": y,
-                          "size": 15, "stroke": elements.color(el)})
+                          "anchor": "center", "size": 15,
+                          "stroke": elements.color(el)})
         if mode == "lewis":
             for dx, dy in molrepr.dot_positions(idx, atoms, bonds,
                                                 gap + dot_r * 2.2, 2.6):

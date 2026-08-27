@@ -380,3 +380,49 @@ def test_polygons_survive_the_svg_export():
     root = svgexport.specs_to_svg(specs, w, h)
     tags = [el.tag.rsplit("}", 1)[-1] for el in root]
     assert "polygon" in tags
+
+
+# ------------------------------------------------------------ atom labels
+def test_the_labels_toggle_actually_emits_text():
+    """The `label` flag used to set a key nothing rendered, so the viewer's
+    Labels button did nothing."""
+    mol = library.make("water")
+    plain = mol.specs(300, 300)
+    labelled = mol.specs(300, 300, labels=True)
+    texts = [s for s in labelled if s["shape"] == "text"]
+    assert len(texts) == len(mol.atoms)
+    assert {s["text"] for s in texts} == {"H", "O"}
+    assert all(s["anchor"] == "center" for s in texts)
+    assert len(labelled) > len(plain)
+
+
+def test_a_label_reads_against_its_sphere():
+    from khervemol import model
+    on_blue = model.atom_specs(0, 0, 10, "N", label=True)[1]["stroke"]
+    on_white = model.atom_specs(0, 0, 10, "H", label=True)[1]["stroke"]
+    on_yellow = model.atom_specs(0, 0, 10, "S", label=True)[1]["stroke"]
+    assert on_blue == "#ffffff"        # nitrogen's blue is dark to the eye
+    assert on_white == "#161616"
+    assert on_yellow == "#161616"
+
+
+def test_a_centred_label_is_placed_on_its_centre(qapp):
+    from khervemol import render
+    spec = {"shape": "text", "text": "Mg", "x": 100.0, "y": 50.0,
+            "anchor": "center", "size": 20, "stroke": "#000000"}
+    item = render.spec_to_item(spec)
+    box = item.sceneBoundingRect()
+    assert box.center().x() == pytest.approx(100.0, abs=1.0)
+    assert box.center().y() == pytest.approx(50.0, abs=1.0)
+
+
+def test_only_centred_svg_text_is_centred():
+    from khervemol import svgexport
+    specs = [{"shape": "text", "text": "a", "x": 0, "y": 0, "size": 10,
+              "anchor": "center", "stroke": "#000000"},
+             {"shape": "text", "text": "b", "x": 0, "y": 0, "size": 10,
+              "stroke": "#000000"}]
+    root = svgexport.specs_to_svg(specs, 100, 100)
+    anchors = [el.get("text-anchor") for el in root
+               if el.tag.endswith("text")]
+    assert anchors == ["middle", "start"]
