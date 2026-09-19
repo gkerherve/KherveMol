@@ -34,8 +34,9 @@ import os
 from array import array
 
 from PyQt5.QtCore import QEvent, QPointF, Qt, QTimer, pyqtSignal
-from PyQt5.QtGui import (QColor, QFont, QFontMetricsF, QGuiApplication,
-                         QImage, QPainter, QPainterPath, QPen, QSurfaceFormat)
+from PyQt5.QtGui import (QBrush, QColor, QFont, QFontMetricsF, QGuiApplication,
+                         QImage, QPainter, QPainterPath, QPen, QRadialGradient,
+                         QSurfaceFormat)
 from PyQt5.QtWidgets import QWidget
 
 try:
@@ -45,11 +46,12 @@ except ImportError:                                   # pragma: no cover
     QOpenGLWidget = QWidget
     HAVE_QT_GL = False
 
-from . import dnd, elements, glshaders, model
+from . import dnd, elements, glshaders, model, molcolor
 
 _HALF = math.pi / 2.0
 SEL_COLOR = "#159c74"                    # the primary (last-clicked) atom
 CO_SEL_COLOR = "#7fbf3f"                 # other Ctrl-selected atoms
+CELL_COLOR = "#d98324"                   # the cell a tilt would rotate
 
 STYLES = ("ball_and_stick", "space_filling", "sticks")
 STYLE_LABELS = {"ball_and_stick": "Ball & stick",
@@ -69,6 +71,7 @@ STICK_RADIUS = {"ball_and_stick": 0.10, "space_filling": 0.0, "sticks": 0.13}
 STICK_BALL = 0.16                        # ball radius in the sticks style
 
 #: Default vertical background gradient (light; see `set_background`).
+POLY_ALPHA = 0.32                        # polyhedron face opacity (as classic)
 BG_TOP = "#fdfdfe"
 BG_BOTTOM = "#d5dde8"
 
@@ -115,7 +118,9 @@ def ball_radius(element, style, rscale=1.0):
 def spread_factor(mol, style):
     """The bond-spread factor actually applied: space-filling shows the true
     geometry (touching spheres), so the bond slider does not apply."""
-    return 1.0 if style == "space_filling" else (mol.bond or 1.0)
+    if style == "space_filling":
+        return 1.0
+    return 1.0 if mol.bond is None else float(mol.bond)
 
 
 def view_basis(az, el):
@@ -127,29 +132,99 @@ def view_basis(az, el):
     return ((ca, -sa, 0.0), (-sa * se, -ca * se, ce), (sa * ce, ca * ce, se))
 
 
+def extent_of(pos, radii, edges=(), notes=()):
+    """(centre, bounding-sphere radius) of atoms (with their radii), cell
+    edges and annotations — the box the camera fits."""
+    pts = list(zip(pos, radii))
+    for e in edges:
+        pts += [(e[0], 0.0), (e[1], 0.0)]
+    for n in notes:
+        if n["kind"] == "text":
+            size = float(n.get("size", 1.0))
+            pts.append((n["pos"], 0.32 * size * len(str(n.get("text", "")))
+                        + 0.4 * size))
+        else:
+            pts += [(n["p1"], 0.0), (n["p2"], 0.0)]
+    if not pts:
+        return (0.0, 0.0, 0.0), 1.0
+    lo = [min(p[k] - r for p, r in pts) for k in range(3)]
+    hi = [max(p[k] + r for p, r in pts) for k in range(3)]
+    c = tuple((lo[k] + hi[k]) / 2.0 for k in range(3))
+    bound = 0.0
+    for p, r in pts:
+        d = math.sqrt(sum((p[k] - c[k]) ** 2 for k in range(3))) + r
+        bound = max(bound, d)
+    return c, bound
+
+
+_BASE = {}                               # (name, cells) -> untilted base
+
+
+def tilt_anchor(mol, style, factor):
+    """Layout anchor for a stacked crystal with tilted cells: the fit and
+    the spread centre come from the **untilted** geometry, so tilting one
+    cell does not rescale or shift the rest (`Molecule._frozen_fit`'s
+    intent). None when there is nothing to anchor."""
+    if not (getattr(mol, "stacked", False) and getattr(mol, "tilts", None)
+            and mol.crystal):
+        return None
+    key = (mol.name, tuple(mol.cells))
+    try:
+        base = _BASE.get(key)
+        if base is None:
+            from . import library
+            if mol.name not in library.LABELS:
+                return None
+            atoms, _b, edges, rs = library.model_data(mol.name, mol.cells)
+            if len(_BASE) >= 4:
+                _BASE.clear()
+            base = _BASE[key] = (atoms, edges, rs)
+        atoms, edges, rs = base
+        c0 = model._centroid(atoms)
+        at, ed = model._spread(atoms, edges, factor, c0)
+        pos = [(a[1], a[2], a[3]) for a in at]
+        radii = [ball_radius(a[0], style, rs) for a in at]
+        center, bound = extent_of(pos, radii, ed or ())
+        return {"centroid": c0, "center": center, "bound": bound}
+    except Exception:
+        return None
+
+
 class Scene:
     """A structure laid out for drawing: spread atom positions, radii,
-    colours, sticks and cell edges — plus the CPU projection used for
-    hit-testing and labels. No GL in here.
+    colours (per-atom / per-site overrides applied), sticks, cell edges,
+    coordination polyhedra and annotations — plus the CPU projection used
+    for hit-testing and labels. No GL in here.
 
     *frozen* (``{"centroid", "center", "bound"}``, from a previous scene's
-    `freeze`) keeps the layout still while one atom is dragged."""
+    `freeze`) keeps the layout still while one atom is dragged; a tilted
+    supercell anchors itself to its untilted base (`tilt_anchor`)."""
 
     def __init__(self, mol, style="ball_and_stick", frozen=None):
         self.style = style if style in STYLES else "ball_and_stick"
         self.factor = spread_factor(mol, self.style)
+        raw = mol.atoms
+        cmap = getattr(mol, "colors", None)
+        if cmap:
+            raw = molcolor.apply_colors(raw, cmap)
+        if frozen is None:
+            frozen = tilt_anchor(mol, self.style, self.factor)
         cen = frozen["centroid"] if frozen else None
-        atoms, edges = model._spread(mol.atoms, mol.edges, self.factor, cen)
-        self.centroid = cen if cen is not None else model._centroid(mol.atoms)
+        atoms, edges = model._spread(raw, mol.edges, self.factor, cen)
+        self.centroid = cen if cen is not None else model._centroid(raw)
+        self.atoms = atoms
         self.pos = [(a[1], a[2], a[3]) for a in atoms]
         self.elems = [a[0] for a in atoms]
         rs = mol.rscale
         self.radii = [ball_radius(e, self.style, rs) for e in self.elems]
-        self.colors = [rgb(elements.color(e)) for e in self.elems]
+        self.colors = [rgb(a[4] if len(a) > 4 and a[4]
+                           else elements.color(a[0])) for a in atoms]
         self.bonds = [(b[0], b[1], b[2]) for b in mol.bonds
                       if b[0] < len(self.pos) and b[1] < len(self.pos)]
         self.stick = STICK_RADIUS[self.style]
         self.edges = edges or []
+        self.poly = bool(getattr(mol, "poly", False))
+        self._faces = None
         notes = getattr(mol, "notes", None)
         if notes and atoms and self.factor != 1.0:
             notes = model._spread_notes(notes, self.factor, self.centroid)
@@ -159,30 +234,9 @@ class Scene:
         if frozen:
             self.center, self.bound = frozen["center"], frozen["bound"]
         else:
-            self.center, self.bound = self._extent()
+            self.center, self.bound = extent_of(self.pos, self.radii,
+                                                self.edges, self.notes)
         self._cache = None
-
-    def _extent(self):
-        pts = [(p, r) for p, r in zip(self.pos, self.radii)]
-        for e in self.edges:
-            pts += [(e[0], 0.0), (e[1], 0.0)]
-        for n in self.notes:
-            if n["kind"] == "text":
-                size = float(n.get("size", 1.0))
-                pts.append((n["pos"], 0.32 * size * len(str(n.get("text", "")))
-                            + 0.4 * size))
-            else:
-                pts += [(n["p1"], 0.0), (n["p2"], 0.0)]
-        if not pts:
-            return (0.0, 0.0, 0.0), 1.0
-        lo = [min(p[k] - r for p, r in pts) for k in range(3)]
-        hi = [max(p[k] + r for p, r in pts) for k in range(3)]
-        c = tuple((lo[k] + hi[k]) / 2.0 for k in range(3))
-        bound = 0.0
-        for p, r in pts:
-            d = math.sqrt(sum((p[k] - c[k]) ** 2 for k in range(3))) + r
-            bound = max(bound, d)
-        return c, bound
 
     def freeze(self):
         return {"centroid": self.centroid, "center": self.center,
@@ -306,14 +360,62 @@ class Scene:
                 ext((x, y, z, cx, cy, r, c[0], c[1], c[2]))
         return out
 
-    def halo_data(self, selection, primary):
-        """Sphere-format quads for the selection halos."""
+    def faces(self):
+        """Coordination-polyhedron faces ``[(points, (r, g, b))]`` (empty
+        unless the polyhedra display is on)."""
+        if not self.poly:
+            return []
+        if self._faces is None:
+            self._faces = [(face, rgb(color)) for face, color in
+                           molcolor.coordination_polyhedra(self.atoms,
+                                                           self.bonds)]
+        return self._faces
+
+    def poly_data(self):
+        """Per-vertex ``pos(3) normal(3) colour(3)`` triangles (each face
+        fanned from its first vertex)."""
+        out = array("f")
+        ext = out.extend
+        for face, c in self.faces():
+            if len(face) < 3:
+                continue
+            a = face[0]
+            for k in range(1, len(face) - 1):
+                b, d = face[k], face[k + 1]
+                u = [b[i] - a[i] for i in range(3)]
+                v = [d[i] - a[i] for i in range(3)]
+                n = (u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2],
+                     u[0] * v[1] - u[1] * v[0])
+                ln = math.sqrt(n[0] ** 2 + n[1] ** 2 + n[2] ** 2) or 1.0
+                n = (n[0] / ln, n[1] / ln, n[2] / ln)
+                for q in (a, b, d):
+                    ext((q[0], q[1], q[2], n[0], n[1], n[2], c[0], c[1], c[2]))
+        return out
+
+    def _poly_edges(self, out):
+        """Thin darker outlines of the polyhedron faces (each edge once)."""
+        seen = set()
+        for face, c in self.faces():
+            dark = (c[0] * 0.65, c[1] * 0.65, c[2] * 0.65)
+            n = len(face)
+            for k in range(n):
+                p, q = face[k], face[(k + 1) % n]
+                key = tuple(sorted((tuple(round(x, 4) for x in p),
+                                    tuple(round(x, 4) for x in q))))
+                if key in seen:
+                    continue
+                seen.add(key)
+                self._segment(out, p, q, -0.02, 0.0, dark)
+
+    def halo_data(self, selection, primary, color=None):
+        """Sphere-format quads for the selection halos (or, with *color*,
+        the tilt-cell ring)."""
         out = array("f")
         for i in selection:
             if not 0 <= i < len(self.pos):
                 continue
             x, y, z = self.pos[i]
-            c = rgb(SEL_COLOR if i == primary else CO_SEL_COLOR)
+            c = rgb(color or (SEL_COLOR if i == primary else CO_SEL_COLOR))
             r = self.radii[i]
             for cx, cy in _QUAD:
                 out.extend((x, y, z, cx, cy, r, c[0], c[1], c[2]))
@@ -359,6 +461,7 @@ class Scene:
                 self._dashes(out, p, q)
             else:
                 self._segment(out, p, q, -0.034, 0.0, (0.13, 0.15, 0.19))
+        self._poly_edges(out)
         return out
 
     def _dashes(self, out, p, q, dash=0.17, gap=0.13):
@@ -467,7 +570,10 @@ class GLView(InputMixin, QOpenGLWidget):
         self._scene = None
         self._top, self._bottom = rgb(BG_TOP), rgb(BG_BOTTOM)
         self._ready = False
-        self._dirty = True
+        self._dirty = True                  # geometry buffers are stale
+        self._halo_dirty = True             # selection / tilt-cell rings stale
+        self._key = None                    # what the current scene was built from
+        self._entries = None                # cached legend rows
         self._failed = False
         self._funcs = None
         self._progs = {}
@@ -490,10 +596,63 @@ class GLView(InputMixin, QOpenGLWidget):
         self.update()
 
     def rebuild(self):
-        """Re-lay-out the structure (call after any edit) and repaint."""
-        self._build_scene()
-        self._dirty = True
+        """Re-lay-out the structure (call after any edit) and repaint.
+        The (expensive) vertex arrays are rebuilt only when the geometry
+        really changed; a selection or legend toggle just refreshes the
+        halo rings."""
+        key = self._geom_key()
+        if key != self._key or self._scene is None:
+            self._build_scene()
+            self._key = key
+            self._entries = None
+            self._dirty = True
+        self._halo_dirty = True
         self.update()
+
+    def _geom_key(self):
+        """A cheap fingerprint of everything the scene is built from."""
+        o = self._o
+        m = o.mol
+        try:
+            return hash((o.style, m.bond, m.rscale, bool(m.poly),
+                         tuple(tuple(a) for a in m.atoms),
+                         tuple(tuple(b) for b in m.bonds),
+                         tuple(tuple(e) for e in (m.edges or ())),
+                         tuple(sorted(m.colors.items())),
+                         repr(m.notes), tuple(m.cells),
+                         repr(sorted(m.tilts.items()))))
+        except (TypeError, AttributeError):
+            return object()                 # unhashable: always rebuild
+
+    def legend_entries(self):
+        if self._entries is None:
+            m = self._o.mol
+            self._entries = molcolor.legend_entries(m.atoms, m.colors)
+        return self._entries
+
+    def _legend(self, w, h):
+        """Layout of the colour key for a (w, h) view, or None when off:
+        ``(entries, disc radius, font px, width reserved on the right)``."""
+        o = self._o
+        btn = getattr(o, "legend_btn", None)
+        if btn is None or not btn.isChecked():
+            return None
+        entries = self.legend_entries()
+        if not entries:
+            return None
+        r = max(7.0, min(18.0, min(w, h) * 0.028))
+        fpx = max(9, int(r * 1.3))
+        font = QFont()
+        font.setPixelSize(fpx)
+        fm = QFontMetricsF(font)
+        tw = max(fm.horizontalAdvance(label) for _e, label, _c in entries)
+        return entries, r, fpx, min(r * 2.6 + tw + 24.0, w * 0.45)
+
+    def _box(self, w, h):
+        """The part of a (w, h) view the model is fitted into — the legend,
+        when shown, keeps a strip on the right to itself."""
+        lg = self._legend(w, h)
+        return (w - lg[3] if lg else w), h
 
     def reset_zoom(self):
         self._zoom = 1.0
@@ -515,24 +674,30 @@ class GLView(InputMixin, QOpenGLWidget):
         if self._frozen is not None:
             return self._drag_ppa
         o = self._o
-        return self.scene.fit_ppa(w, h, o.mol.az, o.mol.el) * self._zoom
+        bw, bh = self._box(w, h)
+        return self.scene.fit_ppa(bw, bh, o.mol.az, o.mol.el) * self._zoom
 
     # ------------------------------------------------------ hit testing
+    # Atoms and sticks are hit-testable on crystals and scenes too (a click
+    # picks a cell / a recolour target); only *moving* an atom is limited to
+    # editable structures.
     def _atom_at(self, pos):
         o = self._o
-        if not o.editable or not o.mol.atoms:
+        if not o.mol.atoms:
             return None
+        bw, bh = self._box(self.width(), self.height())
         return self.scene.pick_atom(pos.x(), pos.y(), o.mol.az, o.mol.el,
-                                    self._ppa(), self.width(), self.height())
+                                    self._ppa(), bw, bh)
 
     def _bond_at(self, pos):
         o = self._o
-        if not o.editable or not o.mol.atoms:
+        if not o.mol.atoms:
             return None
         if self._atom_at(pos) is not None:
             return None                     # an atom sits on top of the stick
+        bw, bh = self._box(self.width(), self.height())
         return self.scene.pick_bond(pos.x(), pos.y(), o.mol.az, o.mol.el,
-                                    self._ppa(), self.width(), self.height())
+                                    self._ppa(), bw, bh)
 
     # ------------------------------------------------------------ mouse
     def contextMenuEvent(self, event):
@@ -588,7 +753,9 @@ class GLView(InputMixin, QOpenGLWidget):
                             self._drag_ppa,
                             bonds=o.mol.bonds if o.lock_lengths else None)
             self._build_scene(self._frozen)
+            self._key = None
             self._dirty = True
+            self._halo_dirty = True
             self.update()
             o.show_geometry(self._press_atom)
 
@@ -655,8 +822,11 @@ class GLView(InputMixin, QOpenGLWidget):
                                glshaders.CYL_FRAGMENT, C),
                 "bg": program(glshaders.BG_VERTEX, glshaders.BG_FRAGMENT,
                               glshaders.BG_ATTRS),
+                "poly": program(glshaders.POLY_VERTEX,
+                                glshaders.POLY_FRAGMENT,
+                                glshaders.POLY_ATTRS),
             }
-            for name in ("sphere", "halo", "cyl", "bg"):
+            for name in ("sphere", "halo", "cell", "cyl", "poly", "bg"):
                 buf = QOpenGLBuffer(QOpenGLBuffer.VertexBuffer)
                 buf.create()
                 self._bufs[name] = [buf, 0]
@@ -698,18 +868,27 @@ class GLView(InputMixin, QOpenGLWidget):
         return len(raw)
 
     def _sync_gpu(self):
-        """Upload fresh vertex arrays if the structure changed."""
-        if not self._dirty:
+        """Upload fresh vertex arrays where the structure or the rings
+        changed."""
+        if not (self._dirty or self._halo_dirty):
             return
         o = self._o
         sc = self.scene
-        for name, data, stride in (
-                ("sphere", sc.sphere_data(), 9),
-                ("halo", sc.halo_data(o.selection, o.selected), 9),
-                ("cyl", sc.cylinder_data(), 13)):
+        jobs = []
+        if self._dirty:
+            jobs += [("sphere", sc.sphere_data(), 9),
+                     ("cyl", sc.cylinder_data(), 13),
+                     ("poly", sc.poly_data(), 9)]
+        cell = []
+        if o.mol.stacked and hasattr(o, "tilt_cell_atoms"):
+            picked = set(o.selection)
+            cell = [i for i in o.tilt_cell_atoms() if i not in picked]
+        jobs += [("halo", sc.halo_data(o.selection, o.selected), 9),
+                 ("cell", sc.halo_data(cell, None, CELL_COLOR), 9)]
+        for name, data, stride in jobs:
             self._upload(name, data)
             self._bufs[name][1] = len(data) // stride
-        self._dirty = False
+        self._dirty = self._halo_dirty = False
 
     # ------------------------------------------------------------ paint
     def paintGL(self):
@@ -719,8 +898,10 @@ class GLView(InputMixin, QOpenGLWidget):
             self._sync_gpu()
             dpr = self.devicePixelRatioF()
             pw, ph = int(self.width() * dpr), int(self.height() * dpr)
-            self._render(pw, ph, self._ppa() * dpr)
-            if self._o.labels_btn.isChecked() or self.scene.notes:
+            lw = self.width() - self._box(self.width(), self.height())[0]
+            self._render(pw, ph, self._ppa() * dpr, int(lw * dpr))
+            if (self._o.labels_btn.isChecked() or self.scene.notes
+                    or self._legend(self.width(), self.height())):
                 p = QPainter(self)
                 self._paint_overlay(p, self.width(), self.height(),
                                     self._ppa())
@@ -739,7 +920,7 @@ class GLView(InputMixin, QOpenGLWidget):
     def _common(self, prog, az, el, ppa, pw, ph):
         sc = self.scene
         r, u, f = view_basis(az, el)
-        zr = sc.bound + 0.5
+        zr = sc.bound * 1.3 + 1.0
         pan = sc._view(az, el)[1]
         self._set(prog, "u_origin", *sc.center)
         self._set(prog, "u_pan", *pan)
@@ -775,9 +956,10 @@ class GLView(InputMixin, QOpenGLWidget):
             prog.disableAttributeArray(loc)
         buf.release()
 
-    def _render(self, pw, ph, ppa):
+    def _render(self, pw, ph, ppa, legend_px=0):
         """Draw the whole scene into the currently bound framebuffer, which
-        is (pw x ph) device pixels at *ppa* device pixels per Å."""
+        is (pw x ph) device pixels at *ppa* device pixels per Å; the model
+        is confined to the left ``pw - legend_px`` columns."""
         f = self._funcs
         o = self._o
         az, el = o.mol.az, o.mol.el
@@ -801,6 +983,9 @@ class GLView(InputMixin, QOpenGLWidget):
         bg.disableAttributeArray(0)
         buf.release()
         bg.release()
+        bpw = max(pw - legend_px, 1)
+        f.glViewport(0, 0, bpw, ph)
+        pw = bpw
         # -- opaque impostors (alpha carries MSAA coverage; keep dest alpha)
         f.glEnable(GL_DEPTH_TEST)
         f.glDepthFunc(GL_LESS)
@@ -828,31 +1013,77 @@ class GLView(InputMixin, QOpenGLWidget):
         cp.release()
         if self._a2c:
             f.glDisable(GL_SAMPLE_ALPHA_TO_COVERAGE)
-        # -- selection halos, blended over the top (no depth writes)
-        n_halo = self._bufs["halo"][1]
-        if n_halo:
+        # -- translucent polyhedron faces, then the rings: blended over the
+        #    opaque pass, depth-tested but never writing depth
+        f.glEnable(GL_BLEND)
+        f.glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+        f.glDepthMask(False)
+        n_poly = self._bufs["poly"][1]
+        if n_poly:
+            pp = self._progs["poly"]
+            pp.bind()
+            self._common(pp, az, el, ppa, pw, ph)
+            self._set(pp, "u_alpha", POLY_ALPHA)
+            self._draw("poly", pp, n_poly, 9, [(0, 3), (3, 3), (6, 3)])
+            pp.release()
+        for name, mult, dash in (("halo", 1.7, 0.0), ("cell", 1.32, 1.0)):
+            n_halo = self._bufs[name][1]
+            if not n_halo:
+                continue
             hp = self._progs["halo"]
             hp.bind()
             self._common(hp, az, el, ppa, pw, ph)
-            self._set(hp, "u_mult", 1.7)
+            self._set(hp, "u_mult", mult)
+            self._set(hp, "u_dash", dash)
             self._set(hp, "u_zlift", 0.9)
-            f.glEnable(GL_BLEND)
-            f.glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-            f.glDepthMask(False)
-            self._draw("halo", hp, n_halo, 9,
+            self._draw(name, hp, n_halo, 9,
                        [(0, 3), (3, 2), (5, 1), (6, 3)])
-            f.glDepthMask(True)
-            f.glDisable(GL_BLEND)
             hp.release()
+        f.glDepthMask(True)
+        f.glDisable(GL_BLEND)
         f.glColorMask(True, True, True, True)
         f.glDisable(GL_DEPTH_TEST)
 
     def _paint_overlay(self, painter, w, h, ppa):
+        """Everything QPainter draws over the GL image, for a (w, h) target
+        (the widget, or an export image) with the model at *ppa* px/Å."""
         painter.setRenderHint(QPainter.Antialiasing)
         painter.setRenderHint(QPainter.TextAntialiasing)
+        bw, _bh = self._box(w, h)
         if self._o.labels_btn.isChecked():
-            self._paint_labels(painter, w, h, ppa)
-        self._paint_notes(painter, w, h, ppa)
+            self._paint_labels(painter, bw, h, ppa)
+        self._paint_notes(painter, bw, h, ppa)
+        self._paint_legend(painter, w, h)
+
+    def _paint_legend(self, painter, w, h):
+        """The colour key: a shaded disc per element / site plus its name,
+        in the strip `_box` keeps free on the right."""
+        lg = self._legend(w, h)
+        if not lg:
+            return
+        entries, r, fpx, lw = lg
+        x0 = w - lw + 6.0
+        y0 = h * 0.06
+        font = QFont(painter.font())
+        font.setPixelSize(fpx)
+        painter.setFont(font)
+        dark_bg = sum(self._top) / 3.0 < 0.45
+        ink = QColor("#e8edf2") if dark_bg else QColor("#1a1a1a")
+        for i, (el, label, color) in enumerate(entries):
+            cy = y0 + r + i * r * 2.8
+            if cy + r > h:
+                break
+            cx = x0 + r
+            body = QColor(color)
+            grad = QRadialGradient(QPointF(cx - r * 0.35, cy - r * 0.4), r * 1.25)
+            grad.setColorAt(0.0, body.lighter(190))
+            grad.setColorAt(0.45, body)
+            grad.setColorAt(1.0, body.darker(190))
+            painter.setPen(QPen(body.darker(230), max(0.8, r * 0.08)))
+            painter.setBrush(QBrush(grad))
+            painter.drawEllipse(QPointF(cx, cy), r, r)
+            painter.setPen(QPen(ink))
+            painter.drawText(QPointF(x0 + r * 2.6, cy + fpx * 0.35), label)
 
     def _paint_notes(self, painter, w, h, ppa):
         """Scene annotations (reaction labels, arrows) over the GL image:
@@ -943,7 +1174,9 @@ class GLView(InputMixin, QOpenGLWidget):
             font.setBold(True)
             painter.setFont(font)
             el = sc.elems[i]
-            ink = QColor(elements.text_color(el))
+            cr, cg, cb = sc.colors[i]
+            ink = QColor("#161616" if 0.299 * cr + 0.587 * cg + 0.114 * cb
+                         > 0.6 else "#ffffff")
             halo = QColor(0, 0, 0, 90) if ink.lightness() > 128 \
                 else QColor(255, 255, 255, 110)
             rect = painter.fontMetrics().boundingRect(el)
@@ -974,17 +1207,19 @@ class GLView(InputMixin, QOpenGLWidget):
                 return None
             fbo.bind()
             o = self._o
-            ppa = (self.scene.fit_ppa(width, height, o.mol.az, o.mol.el)
+            bw, bh = self._box(width, height)
+            ppa = (self.scene.fit_ppa(bw, bh, o.mol.az, o.mol.el)
                    * self._zoom)
             samples = fbo.format().samples()
             keep, self._a2c = self._a2c, samples > 0
             try:
-                self._render(width, height, ppa)
+                self._render(width, height, ppa, int(width - bw))
             finally:
                 self._a2c = keep
             fbo.release()
             img = fbo.toImage().convertToFormat(QImage.Format_ARGB32)
-            if self._o.labels_btn.isChecked() or self.scene.notes:
+            if (self._o.labels_btn.isChecked() or self.scene.notes
+                    or self._legend(width, height)):
                 p = QPainter(img)
                 self._paint_overlay(p, width, height, ppa)
                 p.end()

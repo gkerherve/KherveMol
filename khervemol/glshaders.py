@@ -23,6 +23,7 @@ the Free Software Foundation, either version 3 of the License, or
 SPHERE_ATTRS = ["a_center", "a_corner", "a_radius", "a_color"]
 CYL_ATTRS = ["a_p0", "a_p1", "a_corner", "a_radius", "a_off", "a_color"]
 BG_ATTRS = ["a_pos"]
+POLY_ATTRS = ["a_pos", "a_nrm", "a_color"]
 
 # Shared view transform.
 _VIEW = """
@@ -132,6 +133,7 @@ void main() {
 HALO_FRAGMENT = """
 #version 120
 uniform float u_mult;
+uniform float u_dash;      // >0.5: a thin dashed ring (the tilt-cell target)
 varying vec2 v_uv;
 varying vec3 v_color;
 varying vec3 v_vc;
@@ -139,6 +141,14 @@ varying float v_rad;
 void main() {
     float d = length(v_uv);            // 1.0 at the ball's silhouette
     float span = u_mult - 1.0;
+    if (u_dash > 0.5) {
+        float dt = (d - 1.02) / max(span - 0.02, 1e-3);
+        if (dt < 0.0 || dt > 1.0) discard;
+        if (sin(atan(v_uv.y, v_uv.x) * 9.0) < 0.0) discard;
+        float edge = smoothstep(0.0, 0.25, dt) * (1.0 - smoothstep(0.7, 1.0, dt));
+        gl_FragColor = vec4(v_color, edge);
+        return;
+    }
     float t = clamp((d - 1.0) / span, 0.0, 1.0);
     if (d < 0.985 || t >= 1.0) discard;
     float ring = smoothstep(0.0, 0.05, t) * (1.0 - smoothstep(0.08, 0.26, t));
@@ -249,5 +259,37 @@ void main() {
     float vig = dot(v_p * vec2(0.55, 0.7), v_p * vec2(0.55, 0.7));
     col *= 1.0 - 0.06 * vig;
     gl_FragColor = vec4(col, 1.0);
+}
+"""
+
+# Translucent coordination-polyhedron faces: two-sided flat shading, blended
+# over the opaque pass (depth-tested, no depth writes).
+POLY_VERTEX = """
+#version 120
+attribute vec3 a_pos;
+attribute vec3 a_nrm;
+attribute vec3 a_color;
+""" + _VIEW + """
+varying vec3 v_nrm;
+varying vec3 v_color;
+void main() {
+    vec3 p = to_view(a_pos);
+    v_nrm = vec3(dot(a_nrm, u_right), dot(a_nrm, u_up), dot(a_nrm, u_fwd));
+    v_color = a_color;
+    gl_Position = vec4(p.xy * u_scale, -p.z * u_zk, 1.0);
+}
+"""
+
+POLY_FRAGMENT = """
+#version 120
+uniform float u_alpha;
+varying vec3 v_nrm;
+varying vec3 v_color;
+void main() {
+    vec3 n = normalize(v_nrm);
+    vec3 key = normalize(vec3(-0.45, 0.62, 0.66));
+    float k = 0.68 + 0.32 * abs(dot(n, key));
+    float rim = pow(1.0 - abs(n.z), 2.0) * 0.10;
+    gl_FragColor = vec4(min(v_color * k + rim, 1.0), u_alpha);
 }
 """

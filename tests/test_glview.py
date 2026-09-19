@@ -127,11 +127,17 @@ def test_glview_bond_hit_ignores_points_on_an_atom(viewer):
         assert gl._bond_at(mid) is not None
 
 
-def test_crystals_are_not_hit_testable(viewer):
+def test_crystal_atoms_are_hit_testable_but_not_movable(viewer):
+    """A click on a crystal atom picks a cell / recolour target, like the
+    classic view (which tags crystal atoms too)."""
     viewer.set_molecule(library.make("fcc"))
     gl = glview.GLView(viewer)
-    gl.resize(400, 400)
-    assert gl._atom_at(QPoint(200, 200)) is None
+    gl.resize(500, 400)
+    assert not viewer.editable
+    pts = gl.scene.screen(viewer.mol.az, viewer.mol.el, gl._ppa(), 500, 400)
+    front = max(range(len(pts)), key=lambda i: pts[i][2])
+    hit = gl._atom_at(QPoint(int(pts[front][0]), int(pts[front][1])))
+    assert hit == front
 
 
 # --------------------------------------------------------------- drag units
@@ -395,3 +401,167 @@ def test_gl_render_image_draws_notes(viewer, qapp):
     # the arrow is dark on the light gradient somewhere along the centre row
     dark = [x for x in range(800) if img.pixelColor(x, 150).lightness() < 90]
     assert dark
+
+
+# ------------------------------------------------- colours / polyhedra / cells
+def test_per_atom_colour_override_reaches_the_vertex_data():
+    mol = model.Molecule([["C", 0, 0, 0], ["C", 1.5, 0, 0, "#ff00aa"]],
+                         [[0, 1, 1]], bond=1.0)
+    sc = glview.Scene(mol)
+    assert sc.colors[0] == pytest.approx(glview.rgb(glview.elements.color("C")))
+    assert sc.colors[1] == pytest.approx(glview.rgb("#ff00aa"))
+    data = sc.sphere_data()
+    assert tuple(data[54 + 6:54 + 9]) == pytest.approx(glview.rgb("#ff00aa"))
+    # the recoloured atom's half of the stick takes its colour too
+    cyl = sc.cylinder_data()
+    assert len(cyl) // 13 // 6 == 2
+
+
+def test_crystal_colour_map_is_applied():
+    mol = library.make("fcc")
+    key = "Al@" + [a[4] for a in mol.atoms if len(a) > 4][0]
+    mol.colors[key] = "#00aa44"
+    sc = glview.Scene(mol)
+    assert glview.rgb("#00aa44") in sc.colors
+    assert len(set(sc.colors)) >= 2          # corners and face centres differ
+
+
+def test_site_tints_colour_the_spheres():
+    sc = glview.Scene(library.make("fcc"))
+    assert len(set(sc.colors)) == 2
+
+
+def test_polyhedra_faces_and_buffers():
+    mol = library.make("perovskite")
+    assert glview.Scene(mol).faces() == []
+    assert len(glview.Scene(mol).poly_data()) == 0
+    mol.poly = True
+    sc = glview.Scene(mol)
+    faces = sc.faces()
+    assert len(faces) == 8                   # the TiO6 octahedron
+    data = sc.poly_data()
+    assert len(data) == 8 * 3 * 9            # 8 triangles
+    # outlines join the cylinder buffer
+    assert len(sc.cylinder_data()) > len(glview.Scene(
+        library.make("perovskite")).cylinder_data())
+    # the normal of a triangle is a unit vector
+    nx, ny, nz = data[3:6]
+    assert math.sqrt(nx * nx + ny * ny + nz * nz) == pytest.approx(1.0, abs=1e-5)
+
+
+def test_polyhedra_use_the_centre_atoms_colour():
+    mol = library.make("perovskite")
+    mol.poly = True
+    mol.colors["Ti"] = "#123456"
+    sc = glview.Scene(mol)
+    assert sc.faces()[0][1] == pytest.approx(glview.rgb("#123456"))
+
+
+def test_legend_layout_reserves_room_and_lists_each_colour(viewer):
+    viewer.set_molecule(library.make("fcc"))
+    gl = glview.GLView(viewer)
+    gl.resize(600, 400)
+    assert gl._legend(600, 400) is None
+    assert gl._box(600, 400) == (600, 400)
+    viewer.legend_btn.setChecked(True)
+    entries, r, fpx, lw = gl._legend(600, 400)
+    assert len(entries) == 2                 # corner + face-centre tints
+    assert 0 < lw <= 600 * 0.45
+    assert gl._box(600, 400)[0] == pytest.approx(600 - lw)
+    # the fit shrinks to make room, so the model never sits under the key
+    assert gl._ppa(600, 400) <= gl.scene.fit_ppa(600, 400, viewer.mol.az,
+                                                 viewer.mol.el) * gl._zoom
+
+
+def test_legend_follows_recolouring(viewer):
+    viewer.set_molecule(library.make("fcc"))
+    gl = glview.GLView(viewer)
+    viewer.legend_btn.setChecked(True)
+    gl.rebuild()
+    before = [c for _e, _l, c in gl.legend_entries()]
+    viewer.selection = [0]
+    viewer.mol.colors["Al"] = "#00aa44"
+    gl.rebuild()
+    after = [c for _e, _l, c in gl.legend_entries()]
+    assert before != after and "#00aa44" in after
+
+
+def test_rebuild_reuses_the_scene_until_the_geometry_changes(viewer):
+    viewer.set_molecule(library.make("ethanol"))
+    gl = glview.GLView(viewer)
+    gl.rebuild()
+    first = gl.scene
+    viewer.selection = [1]
+    gl.rebuild()                              # selection only: same scene
+    assert gl.scene is first
+    viewer.mol.atoms[3][1] += 0.2
+    gl.rebuild()
+    assert gl.scene is not first
+    viewer.style = "sticks"
+    gl.rebuild()
+    assert gl.scene.style == "sticks"
+
+
+def test_tilt_cell_ring_atoms_use_the_cell_colour(viewer):
+    viewer.set_molecule(library.make("perovskite"))
+    viewer.set_cells(2, 2, 2)
+    viewer.select_atom(5)
+    cell = viewer.tilt_cell_atoms()
+    assert cell and viewer.mol.stacked
+    sc = glview.Scene(viewer.mol)
+    ring = sc.halo_data([i for i in cell if i != 5], None, glview.CELL_COLOR)
+    assert len(ring) == (len(cell) - (5 in cell)) * 6 * 9
+    assert tuple(ring[6:9]) == pytest.approx(glview.rgb(glview.CELL_COLOR))
+
+
+def test_tilting_one_cell_keeps_the_fit_and_the_selection(viewer):
+    viewer.set_molecule(library.make("perovskite"))
+    viewer.set_cells(2, 2, 2)
+    viewer.select_atom(5)
+    before = glview.Scene(viewer.mol)
+    viewer.set_tilt(viewer.mol.cell_of(5), [0, 0, 35])
+    assert viewer.mol.tilts
+    assert viewer.selection == [5]
+    after = glview.Scene(viewer.mol)
+    assert after.center == pytest.approx(before.center)
+    assert after.bound == pytest.approx(before.bound)
+    assert after.fit_ppa(600, 400) == pytest.approx(before.fit_ppa(600, 400))
+    # ...while the atoms themselves did move
+    assert after.pos != before.pos
+
+
+def test_tilt_and_recolour_rebuild_through_the_gl_view(viewer):
+    viewer.set_molecule(library.make("perovskite"))
+    gl = glview.GLView(viewer)
+    gl.rebuild()
+    viewer.set_cells(2, 2, 2)
+    gl.rebuild()
+    assert len(gl.scene.pos) == len(viewer.mol.atoms)
+    viewer.select_atom(3)
+    viewer.pick_color("#abcdef")
+    gl.rebuild()
+    assert glview.rgb("#abcdef") in gl.scene.colors
+
+
+def test_gl_render_image_with_polyhedra_and_legend(viewer, qapp):
+    if not Viewer3D.gl_available():
+        pytest.skip("needs a real (non-offscreen) OpenGL platform")
+    viewer.resize(900, 600)
+    viewer.show()
+    mol = library.make("perovskite")
+    mol.poly = True
+    viewer.set_molecule(mol)
+    viewer.legend_btn.setChecked(True)
+    for _ in range(30):
+        qapp.processEvents()
+    img = viewer.render_image(800, 500)
+    assert (img.width(), img.height()) == (800, 500)
+    # the legend strip on the right carries dark text on the light gradient
+    assert any(img.pixelColor(x, y).lightness() < 90
+               for x in range(600, 800, 3) for y in range(20, 120, 3))
+    viewer.set_cells(2, 2, 2)
+    viewer.select_atom(5)
+    viewer.set_tilt(viewer.mol.cell_of(5), [0, 0, 20])
+    for _ in range(20):
+        qapp.processEvents()
+    assert viewer.render_image(400, 300) is not None
