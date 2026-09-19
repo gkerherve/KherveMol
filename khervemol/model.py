@@ -4,8 +4,10 @@ A molecule (or crystal) is described by its atoms' 3D coordinates and a
 bond list. `_model` projects that with an isometric camera and returns a
 list of *shape-spec* dicts (circles for lit spheres, lines for sticks,
 dashed lines for cell diagonals). `render.py` turns the specs into Qt
-graphics items, so everything stays plain, editable, exportable vectors —
-no OpenGL.
+graphics items, so everything stays plain, editable, exportable vectors.
+This is the classic renderer and the source of the SVG / fallback export;
+the default on-screen view is the OpenGL `glview.GLView`, which shares this
+module's projection and geometry operations.
 
 The engine also holds the interactive-builder operations (add a bonded
 atom respecting valence, delete, drag an atom in the view plane) and a
@@ -150,9 +152,25 @@ def _spread(atoms, edges, factor, centroid=None):
     return at, ed
 
 
+def _spread_notes(notes, factor, centroid):
+    """Scene annotations move apart with the atoms so they stay put."""
+    cx, cy, cz = centroid
+    out = []
+    for n in notes:
+        n = dict(n)
+        for key in ("pos", "p1", "p2"):
+            if key in n:
+                p = n[key]
+                n[key] = (cx + (p[0] - cx) * factor,
+                          cy + (p[1] - cy) * factor,
+                          cz + (p[2] - cz) * factor)
+        out.append(n)
+    return out
+
+
 def _model(atoms, bonds, w, h, edges=None, rscale=1.0, labels=False,
            margin=0.12, az=_AZ, el=_EL, bond_scale=1.0, tag_atoms=False,
-           frozen=None):
+           frozen=None, notes=None):
     """Lay out a 3D model into the (w, h) box and return its shape specs.
 
     *atoms* is a list of ``(element, x, y, z)``; *bonds* a list of
@@ -164,6 +182,8 @@ def _model(atoms, bonds, w, h, edges=None, rscale=1.0, labels=False,
     spheres. Passing *frozen* (from `fit_params`) reuses a captured
     scale/origin/centroid so dragging one atom doesn't rescale the rest."""
     fc = frozen.get("centroid") if frozen else None
+    if notes and bond_scale != 1.0 and atoms:
+        notes = _spread_notes(notes, bond_scale, fc or _centroid(atoms))
     atoms, edges = _spread(atoms, edges, bond_scale, fc)
     proj = [_proj(a[1], a[2], a[3], az, el) for a in atoms]
     rad = [elements.radius(a[0]) * rscale for a in atoms]
@@ -180,6 +200,25 @@ def _model(atoms, bonds, w, h, edges=None, rscale=1.0, labels=False,
             pb = _proj(*e[1], az, el)
             pedges.append((pa, pb, style))
             for px, py, _ in (pa, pb):
+                xs_lo.append(px)
+                xs_hi.append(px)
+                ys_lo.append(py)
+                ys_hi.append(py)
+
+    pnotes = []
+    for n in (notes or ()):
+        pts = [n[k] for k in ("pos", "p1", "p2") if k in n]
+        proj_pts = [_proj(*p, az, el) for p in pts]
+        pnotes.append((n, proj_pts))
+        half = float(n.get("size", 1.0))
+        for i, (px, py, _d) in enumerate(proj_pts):
+            if n.get("kind") == "text":
+                span = 0.3 * half * max(1, len(str(n.get("text", ""))))
+                xs_lo.append(px - span)
+                xs_hi.append(px + span)
+                ys_lo.append(py - half)
+                ys_hi.append(py + half)
+            else:
                 xs_lo.append(px)
                 xs_hi.append(px)
                 ys_lo.append(py)
@@ -228,7 +267,46 @@ def _model(atoms, bonds, w, h, edges=None, rscale=1.0, labels=False,
         if tag_atoms and a_specs:
             a_specs[0]["_atom"] = idx        # for builder hit-testing
         specs += a_specs
+    for n, pts in pnotes:
+        specs += note_specs(n, [T(p[0], p[1]) for p in pts], s)
     return specs
+
+
+def note_specs(note, pts, s):
+    """Shape specs for one scene annotation, given its projected points
+    and the pixels-per-ångström scale *s*."""
+    color = note.get("color", "#22303c")
+    if note.get("kind") == "text":
+        px = max(6.0, float(note.get("size", 1.0)) * s)
+        text = str(note.get("text", ""))
+        x, y = pts[0]
+        return [{"shape": "text", "text": text, "x": x - 0.3 * px * len(text),
+                 "y": y - 0.62 * px, "size": px * 0.8, "stroke": color,
+                 "bold": bool(note.get("bold", True))}]
+    if note.get("kind") == "arrow":
+        (x1, y1), (x2, y2) = pts[0], pts[1]
+        dx, dy = x2 - x1, y2 - y1
+        length = math.hypot(dx, dy) or 1.0
+        px, py = -dy / length, dx / length
+        w = max(2.0, float(note.get("size", 1.0)) * s * 0.10)
+        head = min(length * 0.35, w * 5)
+        offsets = [-w * 1.3, w * 1.3] if note.get("double") else [0.0]
+        out = []
+        for k, off in enumerate(offsets):
+            a = (x1 + px * off, y1 + py * off)
+            b = (x2 + px * off, y2 + py * off)
+            if k == 1:                       # the return arrow points back
+                a, b = b, a
+            ux, uy = (b[0] - a[0]) / length, (b[1] - a[1]) / length
+            out.append({"shape": "line", "x1": a[0], "y1": a[1], "x2": b[0],
+                        "y2": b[1], "stroke": color, "width": w})
+            for sgn in (-1, 1):
+                out.append({"shape": "line", "x1": b[0], "y1": b[1],
+                            "x2": b[0] - ux * head - sgn * uy * head * 0.55,
+                            "y2": b[1] - uy * head + sgn * ux * head * 0.55,
+                            "stroke": color, "width": w})
+        return out
+    return []
 
 
 # ------------------------------------------------------- layout / drag helpers
@@ -680,10 +758,15 @@ class Molecule:
 
     def __init__(self, atoms=None, bonds=None, name="custom", label=None,
                  az=None, el=None, bond=None, rscale=0.92, crystal=False,
-                 edges=None):
+                 edges=None, notes=None):
         self.atoms = [list(a) for a in (atoms or [])]
         self.bonds = [list(b) for b in (bonds or [])]
         self.edges = list(edges) if edges else None
+        #: 3D annotations drawn over the scene (a reaction's coefficients,
+        #: plus signs, arrow and formulas): dicts with ``kind`` "text"
+        #: (text, pos, size Å, color, bold) or "arrow" (p1, p2, color,
+        #: double, size)
+        self.notes = [dict(n) for n in notes] if notes else None
         self.name = name
         self.label = label or name
         self.az = DEFAULT_AZ if az is None else az
@@ -695,13 +778,13 @@ class Molecule:
     def clone(self):
         return Molecule(self.atoms, self.bonds, self.name, self.label,
                         self.az, self.el, self.bond, self.rscale,
-                        self.crystal, self.edges)
+                        self.crystal, self.edges, self.notes)
 
     def specs(self, w, h, tag_atoms=False, frozen=None, labels=False):
         return _model(self.atoms, self.bonds, w, h, edges=self.edges,
                       rscale=self.rscale, az=self.az, el=self.el,
                       bond_scale=self.bond, tag_atoms=tag_atoms,
-                      frozen=frozen, labels=labels)
+                      frozen=frozen, labels=labels, notes=self.notes)
 
     def formula(self):
         """Hill-system molecular formula string (C first, H second, rest

@@ -2,8 +2,8 @@
 
 Feeds the Molecule Explorer so you can pick "Aspirin" or "Glycine" from a
 searchable list instead of typing SMILES by hand. Building any of these
-into 3D/2D uses the RDKit bridge (`rdkit_io`); without RDKit the names and
-SMILES are still browsable and copyable.
+into 3D uses RDKit when installed and the built-in embedder (`smiles`)
+otherwise; `compounds` absorbs the entries its own library lacks.
 
 Copyright (C) 2026 Gwilherm Kerherve
 

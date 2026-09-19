@@ -21,7 +21,7 @@ import json
 
 from . import model, render
 
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2               # 2: scene notes (reactions)
 
 
 def mol_to_dict(mol):
@@ -36,7 +36,19 @@ def mol_to_dict(mol):
         "atoms": [list(a) for a in mol.atoms],
         "bonds": [list(b) for b in mol.bonds],
         "edges": edges,
+        "notes": [_note_to_dict(n) for n in mol.notes] if mol.notes else None,
     }
+
+
+def _note_to_dict(note):
+    return {k: (list(v) if k in _NOTE_POINTS else v) for k, v in note.items()}
+
+
+def _note_from_dict(d):
+    return {k: (tuple(v) if k in _NOTE_POINTS else v) for k, v in d.items()}
+
+
+_NOTE_POINTS = ("pos", "p1", "p2")
 
 
 def mol_from_dict(d):
@@ -48,7 +60,9 @@ def mol_from_dict(d):
         name=d.get("name", "custom"), label=d.get("label"),
         az=d.get("az"), el=d.get("el"), bond=d.get("bond"),
         rscale=d.get("rscale", 0.92), crystal=d.get("crystal", False),
-        edges=edges)
+        edges=edges,
+        notes=[_note_from_dict(n) for n in d["notes"]] if d.get("notes")
+        else None)
 
 
 def save(path, mol, sketch_atoms, sketch_bonds):
