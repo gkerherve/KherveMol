@@ -1,12 +1,11 @@
 """Molecule Explorer — a searchable browser of structures to build.
 
-Instead of typing SMILES blind, open the Explorer (Molecule ▸ Explorer…)
-and pick a compound by name from a categorised, searchable tree: the
-built-in 3D models plus ~120 named compounds (solvents, drugs, amino
-acids, sugars, aromatics, nucleobases, functional groups…). The right
-pane previews the selected structure; **Build** loads it into the 3D view
-(and 2D sketch). Named compounds are built via RDKit; the built-in models
-work with or without it.
+Open the Explorer (Molecule ▸ Explorer…) and pick a structure by name
+from one categorised, searchable tree: ~700 molecules (solvents, drugs,
+amino acids, sugars, aromatics, salts, oxides…), 120+ crystals, surfaces
+cut along (hkl), graphene / nanotubes / fullerenes, and classic
+reactions. The right pane previews the selection in 3D; **Build** loads
+it into the 3D view (and 2D sketch). Everything builds without RDKit.
 
 Copyright (C) 2026 Gwilherm Kerherve
 
@@ -23,7 +22,7 @@ from PyQt5.QtWidgets import (QDialogButtonBox, QGraphicsScene, QGraphicsView,
                              QPushButton, QTreeWidget, QTreeWidgetItem,
                              QVBoxLayout, QWidget)
 
-from . import catalog, library, rdkit_io, render
+from . import entries, render
 
 
 class _Preview(QGraphicsView):
@@ -63,7 +62,7 @@ class _Preview(QGraphicsView):
 
 class MoleculeExplorer(QDialog):
     """Pick a structure to build. `result()` returns ``(kind, value, name)``
-    where kind is ``"model"`` (value = library key) or ``"smiles"``."""
+    — an `entries` pair plus its display name."""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -78,7 +77,7 @@ class MoleculeExplorer(QDialog):
         # ---- left: search + tree ----
         left = QVBoxLayout()
         self.search = QLineEdit()
-        self.search.setPlaceholderText("Search compounds…  (name or formula)")
+        self.search.setPlaceholderText("Search…  (name, formula or family)")
         self.search.textChanged.connect(self._filter)
         self.search.setClearButtonEnabled(True)
         left.addWidget(self.search)
@@ -104,14 +103,6 @@ class MoleculeExplorer(QDialog):
         right.addWidget(self.info)
         body.addLayout(right, 1)
 
-        if not rdkit_io.available():
-            note = QLabel("⚠ Install RDKit (pip install rdkit) to preview and "
-                          "build the named compounds. The built-in 3D models "
-                          "work without it.")
-            note.setWordWrap(True)
-            note.setStyleSheet("color:#a06000;")
-            root.addWidget(note)
-
         buttons = QDialogButtonBox()
         self.build_btn = buttons.addButton("Build in 3D",
                                            QDialogButtonBox.AcceptRole)
@@ -125,32 +116,21 @@ class MoleculeExplorer(QDialog):
 
     # ------------------------------------------------------------- tree
     def _populate(self):
-        # Built-in models (always buildable)
-        top = QTreeWidgetItem(["Built-in 3D models"])
-        self._bold(top)
-        self.tree.addTopLevelItem(top)
-        for title, keys in library.CATEGORIES:
-            grp = QTreeWidgetItem([title])
-            top.addChild(grp)
-            for key in keys:
-                it = QTreeWidgetItem([library.label(key)])
-                it.setData(0, Qt.UserRole, ("model", key, library.label(key)))
-                grp.addChild(it)
-        top.setExpanded(True)
-
-        # Named catalog (SMILES)
-        cat_top = QTreeWidgetItem(["Named compounds"])
-        self._bold(cat_top)
-        self.tree.addTopLevelItem(cat_top)
-        for cat, entries in catalog.grouped():
-            grp = QTreeWidgetItem([cat])
-            cat_top.addChild(grp)
-            for name, smi in entries:
-                it = QTreeWidgetItem([name])
-                it.setData(0, Qt.UserRole, ("smiles", smi, name))
-                it.setToolTip(0, smi)
-                grp.addChild(it)
-        cat_top.setExpanded(True)
+        for n, (title, groups) in enumerate(entries.sections()):
+            top = QTreeWidgetItem([title])
+            self._bold(top)
+            self.tree.addTopLevelItem(top)
+            for group, rows in groups:
+                grp = QTreeWidgetItem([group])
+                top.addChild(grp)
+                for label, (kind, value) in rows:
+                    it = QTreeWidgetItem([label])
+                    it.setData(0, Qt.UserRole, (kind, value, label))
+                    tip = entries.smiles_of(kind, value)
+                    if tip:
+                        it.setToolTip(0, tip)
+                    grp.addChild(it)
+            top.setExpanded(n == 0)
 
     def _bold(self, item):
         f = item.font(0)
@@ -182,36 +162,30 @@ class MoleculeExplorer(QDialog):
     def _on_select(self, current, _prev):
         data = current.data(0, Qt.UserRole) if current else None
         self._choice = data
-        self.build_btn.setEnabled(data is not None
-                                  and (data[0] == "model"
-                                       or rdkit_io.available()))
+        self.build_btn.setEnabled(data is not None)
         if data is None:
             self.preview.show_text("")
-            self.info.setText("Select a compound to preview it.")
+            self.info.setText("Select a structure to preview it.")
             return
         kind, value, name = data
         try:
-            if kind == "model":
-                mol = library.make(value)
-                self.preview.show_specs(mol.specs(300, 260))
-                self.info.setText(
-                    f"<b>{name}</b> &nbsp; [{mol.formula()}]<br>"
-                    "Built-in 3D model — works without RDKit.")
-            else:
-                if rdkit_io.available():
-                    atoms, bonds = rdkit_io.sketch_from_smiles(value)
-                    self.preview.show_specs(
-                        render.specs_from_graph2d(atoms, bonds))
-                    self.info.setText(f"<b>{name}</b><br>"
-                                      f"SMILES: <code>{value}</code>")
-                else:
-                    self.preview.show_text("Install RDKit to preview")
-                    self.info.setText(f"<b>{name}</b><br>"
-                                      f"SMILES: <code>{value}</code>")
+            mol = entries.build(kind, value, name)
+            self.preview.show_specs(mol.specs(300, 260))
+            extra = ""
+            smi = entries.smiles_of(kind, value)
+            if smi:
+                extra = f"<br>SMILES: <code>{smi}</code>"
+            elif kind == "reaction":
+                extra = f"<br><code>{value}</code>"
+            formula = mol.formula() if not mol.notes else ""
+            head = f" &nbsp; [{formula}]" if formula else ""
+            self.info.setText(f"<b>{name}</b>{head}<br>"
+                              f"{len(mol.atoms)} atoms, "
+                              f"{len(mol.bonds)} bonds{extra}")
         except Exception as exc:                        # noqa: BLE001
             self.preview.show_text("Preview unavailable")
-            self.info.setText(f"<b>{name}</b><br>SMILES: <code>{value}</code>"
-                              f"<br><span style='color:#b00'>{exc}</span>")
+            self.info.setText(f"<b>{name}</b><br>"
+                              f"<span style='color:#b00'>{exc}</span>")
 
     def _on_double(self, item, _col=0):
         if item.data(0, Qt.UserRole) is not None:
@@ -219,8 +193,6 @@ class MoleculeExplorer(QDialog):
 
     def _build(self):
         if self._choice is None:
-            return
-        if self._choice[0] == "smiles" and not rdkit_io.available():
             return
         self.accept()
 

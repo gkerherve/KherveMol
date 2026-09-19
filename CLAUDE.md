@@ -5,9 +5,12 @@ KherveMol is a native PyQt5 desktop app in the Kherve family
 KherveDraw, KherveBook, KhervePaint). It draws **chemical compounds and
 crystal structures in 3D and 2D**: an interactive ball-and-stick 3D
 viewer/builder and a flat 2D skeletal sketcher, over a shared molecular
-model. No heavy chemistry dependencies — the 3D look is a pure-Python
-isometric projection (no OpenGL), so it installs with only PyQt5 +
-qtawesome, matching the family philosophy.
+model. No heavy dependencies: the 3D view is **OpenGL** (impostor-shaded
+spheres and cylinders through PyQt5's own `QOpenGLWidget` — no PyOpenGL), with
+the older pure-Python isometric projection kept as an automatic fallback, so
+it installs with only PyQt5 + qtawesome, matching the family philosophy.
+The molecule / crystal / surface / reaction content is ported from
+KherveCAD's Qt-free chemistry modules and needs no RDKit either.
 
 ## Build / run
 
@@ -82,7 +85,66 @@ module and import.
                      an atom (with everything hanging off it) onto a new
                      anchor. `angle(i,j,k)` (degrees, at j) and
                      `bond_between` serve the structure outline.
-  - `library.py`   — built-in structures. `_mol_*` / `_xtal_*` builders
+  - `smiles.py`    — Qt-free **SMILES reader + 3D embedder** (ported from
+                     KherveCAD `molecule.py`): `parse_smiles`, implicit H,
+                     VSEPR electron-domain shapes with lone pairs, whole-ring
+                     placement (polygons, fused rings), a light relaxation;
+                     `from_smiles` → `Compound` (atoms/bonds/charges, Å),
+                     `formula_of` (parse-only Hill formula), `formula_counts`.
+                     Aromatic bonds are 1.5 here; `chem.kekulize` turns them
+                     into 1/2 for the viewer.
+  - `compounds.py`, `compounds_more.py`, `compounds_extra.py` — the **700+
+                     compound library** `COMPOUNDS[key] = (name, SMILES,
+                     category, formula)`: KherveCAD's 490 + extra elements /
+                     oxides / salts / halides + the unique entries of
+                     `catalog` absorbed at import (`_absorb_catalog`).
+                     `get(key|name|alias)` → `Compound`; `ALIASES` (ethene →
+                     ethylene …). Formulas in `compounds_extra` and absorbed
+                     rows are *computed* from the SMILES.
+  - `crystal.py`, `crystal_library.py` — `Crystal` (lattice + every atom of
+                     the conventional cell as fractions; density / nearest
+                     distance for tests) and **122 crystals** in six
+                     families, built from prototype functions (`fcc`, `bcc`,
+                     `hcp`, `diamond`, `zinc_blende`, `rock_salt`, `fluorite`,
+                     `wurtzite`, `rutile` …). Tests pin every entry to its
+                     density and nearest-neighbour distance.
+  - `surface.py`   — slab of any crystal cut along (hkl): `parse_miller`,
+                     `in_plane_basis` (primitive 2D cell, centring-aware),
+                     `surface_cell`, `widest_gap` termination. Bulk-terminated.
+  - `nano.py`      — graphene (AA/AB/ABA/ABC, twisted), ribbons, dots,
+                     vacancies / N-doping, graphite surface, (n,m) nanotubes,
+                     fullerenes (C20/C60/C70… capped tubes).
+  - `chem.py`      — the bridge to the viewer: `to_model` (Compound →
+                     `model.Molecule`, Kekulé-fied, **principal-axis
+                     oriented** so flat molecules face the viewer),
+                     `crystal_model` (cells, face atoms, bonds by hash grid,
+                     cell outline edges), `surface_model` (auto-sized slab),
+                     `nano_model`, `find_bonds`, `orient`.
+  - `reactions.py` — `solve(text)` → `Reaction` (parse, exact rational
+                     balance over atoms **and charge**, `source` / `equation`),
+                     `layout(rx)` → a `Molecule` whose `notes` carry the
+                     coefficients, `+`, arrow (double for ⇌) and formulas;
+                     `EXAMPLES` = 36 classics (a test balances and lays out
+                     every one).
+  - `entries.py`   — every library leaf is a `(kind, value)` pair
+                     (`model|compound|smiles|crystal|surface|nano|reaction`);
+                     `build` makes the `Molecule`, `sections()` feeds the
+                     tree and the Explorer, `build_smiles` prefers RDKit and
+                     falls back to `chem.smiles_model`. Values with options are
+                     query strings (`cu?cells=2,2,2`, `si:111?layers=4`,
+                     `graphene?width=3&layers=2`).
+  - `builders_ui.py` — Crystal / Surface / Nano / Reaction dialogs; each has
+                     `entry()` → `(kind, value, label)`.
+  - `glview.py`, `glshaders.py` — the **OpenGL viewer**: `Scene` (CPU layout,
+                     projection identical to `model._proj`, hit-testing,
+                     vertex arrays — testable offscreen) and `GLView`
+                     (`QOpenGLWidget`, GLSL 120 impostors, 4× MSAA, gradient
+                     background, selection halos, QPainter overlay for labels
+                     and `notes`, FBO `render_image`). `Viewer3D.set_renderer`
+                     swaps `GLView` ⇄ classic `_View`; any GL failure falls
+                     back automatically. Offscreen / `KHERVEMOL_RENDERER=
+                     classic` always use classic (the test suite does).
+  - `library.py`   — the original hand-placed models ("Classic 3D models"). `_mol_*` / `_xtal_*` builders
                      return `(atoms, bonds, edges)`; `make(name)` wraps one
                      in a `Molecule`. 30+ entries in `CATEGORIES`: simple
                      molecules, alcohols & acids, hydrocarbons, polymers
@@ -292,9 +354,14 @@ module and import.
   circle whose `fill` is a `sun`-gradient dict (light focal point + dark
   rim) so it reads as a lit 3D ball in the element's CPK colour. This is
   the same spec vocabulary KhervePaint uses, so models could be exchanged.
-- The **3D viewer** never uses OpenGL: `_model` depth-sorts atoms by the
-  projected `depth` and draws far-to-near (edges, bonds, then spheres).
-  Orbit/zoom just change the projection angles / view scale and rebuild.
+- The **3D viewer** draws with OpenGL (`glview.py`) by default; the classic
+  `_model` path depth-sorts atoms by the projected `depth` and draws
+  far-to-near (edges, bonds, then spheres). Both use the same isometric
+  az/el projection (`model._proj`), so orientation, hit-testing, drag and
+  exports agree. Orbit/zoom just change the projection angles / view scale.
+- `Molecule.notes` are scene annotations (reaction text / arrows) in world
+  Å; drawn by `model.note_specs` (classic) and `GLView._paint_notes` (GL);
+  persisted in the `.kmol`.
 - The **2D sketch** is an independent flat molecular graph (its own
   atoms/bonds in scene pixels), not a projection — but `Structure ▸
   Flatten 3D → 2D` projects the current 3D model into it.
@@ -347,7 +414,10 @@ and extend the round-trip tests in `tests/test_document.py`.
 ## Optional RDKit integration
 
 `rdkit` is listed in `requirements.txt` so the standard install includes
-it, **but the app must still run without it**: `rdkit_io.py` imports
+it, **but the app must still run without it** (SMILES, the whole library,
+crystals, surfaces and reactions all build with the pure-Python `smiles`
+embedder; RDKit only refines geometry, imports structure files and writes
+SMILES from a structure): `rdkit_io.py` imports
 `rdkit` behind a `try/except` and exposes `available()`. Never import
 `rdkit` at module top-level anywhere else. New RDKit-backed features go in
 `rdkit_io.py` (guarded), get a menu item gated on `rdkit_io.available()`,
@@ -355,9 +425,11 @@ and a test marked `skipif(not rdkit_io.available())`.
 
 ## Roadmap
 
-- CIF → crystal import via RDKit / pymatgen (still guarded/optional).
-- Auto-generate 3D coordinates from a 2D sketch when RDKit is absent (a
-  small built-in force field), so the tabs are fully bidirectional offline.
+- CIF → crystal import (still guarded/optional).
+- 2D sketch → 3D without RDKit: write SMILES from the sketch graph so
+  `smiles.from_smiles` can embed it (only the reverse direction is offline
+  today).
+- Reaction animation (atom-mapped interpolation reactants → products).
 - Measure tool (bond lengths / angles); multiple molecules per document.
 
 ## Commit / push policy

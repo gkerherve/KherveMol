@@ -10,18 +10,22 @@ the Free Software Foundation, either version 3 of the License, or
 
 import os
 
-from PyQt5.QtCore import QMimeData, Qt
+from PyQt5.QtCore import QMimeData, QSettings, Qt
 from PyQt5.QtWidgets import (QAction, QActionGroup, QApplication, QDockWidget,
                              QFileDialog, QInputDialog, QMainWindow, QMenu,
                              QMessageBox, QScrollArea, QTabWidget, QTreeWidget,
                              QTreeWidgetItem)
 
-from . import (__version__, catalog, dnd, document, elements, help as help_mod,
-               icons, library, model, periodic, rdkit_io, style, svgexport)
+from . import (__version__, builders_ui, crystal_library, dnd, document,
+               elements, entries,
+               help as help_mod, icons, library, model, periodic, rdkit_io,
+               reactions, style, svgexport)
 from .ai_assistant import AiDock
+from .crystal import BuildError
 from .editor2d import Editor2D
 from .explorer import MoleculeExplorer
 from .structure_tree import StructureTree
+from . import viewer3d
 from .viewer3d import Viewer3D
 
 
@@ -51,6 +55,8 @@ class MainWindow(QMainWindow):
 
         self.tabs = QTabWidget()
         self.viewer = Viewer3D()
+        if QSettings(*style._SETTINGS).value("renderer", "gl") == "classic":
+            self.viewer.set_renderer("classic")
         self.sketch = Editor2D()
         self.tabs.addTab(self.viewer, "3D View")
         self.tabs.addTab(self.sketch, "2D Sketch")
@@ -105,24 +111,14 @@ class MainWindow(QMainWindow):
         self.tree = _LibraryTree()
         self.tree.setHeaderHidden(True)
         self.tree.setDragEnabled(True)          # drag a compound to the 2D tab
-        # Two clear sections. Built-in 3D models (build without RDKit),
-        # sub-groups expanded:
-        models_top = self._tree_header("Built-in 3D models")
-        for title, keys in library.CATEGORIES:
-            self._tree_group(models_top, title,
-                             [(library.label(k), ("model", k)) for k in keys],
-                             True, lambda k: _key_color(k[1]))
-        models_top.setExpanded(True)
-        # The full named-compound catalog (SMILES), grouped by family — the
-        # top node is expanded so all the families show, but each family
-        # starts collapsed (there are hundreds of compounds):
-        n = len(catalog.all_entries())
-        cpd_top = self._tree_header(f"Named compounds — {n}")
-        for cat, entries in catalog.grouped():
-            self._tree_group(cpd_top, cat,
-                             [(name, ("smiles", smi)) for name, smi in entries],
-                             False, lambda _v: elements.color("C"))
-        cpd_top.setExpanded(True)
+        # One section per kind of thing — molecules, crystals, surfaces,
+        # graphene / nanotubes / fullerenes, reactions, and the classic
+        # hand-placed models. Everything builds without RDKit.
+        for n, (title, groups) in enumerate(entries.sections()):
+            top = self._tree_header(title)
+            for group, rows in groups:
+                self._tree_group(top, group, rows, False, _entry_color)
+            top.setExpanded(n < 5)
         self.tree.itemActivated.connect(self._tree_load)
         self.tree.itemDoubleClicked.connect(self._tree_load)
         lib_dock.setWidget(self.tree)
@@ -131,6 +127,7 @@ class MainWindow(QMainWindow):
         # Structure on top, library under it — one column, resizable.
         self.splitDockWidget(struct_dock, lib_dock, Qt.Vertical)
         self.resizeDocks([struct_dock, lib_dock], [300, 460], Qt.Vertical)
+        self.resizeDocks([struct_dock], [300], Qt.Horizontal)
 
         # Bottom: the full periodic table (scrolls if the window is narrow).
         pt_dock = QDockWidget("Periodic table", self)
@@ -157,7 +154,7 @@ class MainWindow(QMainWindow):
         self.tree.addTopLevelItem(item)
         return item
 
-    def _tree_group(self, parent, title, entries, expanded, color_fn):
+    def _tree_group(self, parent, title, rows, expanded, color_fn):
         """Add a bold category (with (label, (kind, value)) leaves) under
         *parent* in the library tree."""
         grp = QTreeWidgetItem([title])
@@ -165,11 +162,14 @@ class MainWindow(QMainWindow):
         font.setBold(True)
         grp.setFont(0, font)
         parent.addChild(grp)
-        for label, data in entries:
+        for label, data in rows:
             child = QTreeWidgetItem([label])
             child.setData(0, Qt.UserRole, data)
             child.setIcon(0, icons.element_icon(color_fn(data)))
-            if data[0] == "smiles":
+            tip = entries.smiles_of(*data)
+            if tip:
+                child.setToolTip(0, tip)
+            elif data[0] == "reaction":
                 child.setToolTip(0, data[1])
             grp.addChild(child)
         grp.setExpanded(expanded)
@@ -198,12 +198,13 @@ class MainWindow(QMainWindow):
 
         m_mol = mb.addMenu("&Molecule")
         smi = "" if rdkit_io.available() else "  (needs RDKit)"
+        rd = smi
         self._act(m_mol, "Explorer…", self.open_explorer, "Ctrl+L",
                   "mdi.magnify")
-        self._act(m_mol, "From SMILES…" + smi, self.from_smiles,
+        self._act(m_mol, "From SMILES…", self.from_smiles,
                   "Ctrl+Shift+M", "mdi.molecule")
-        self._act(m_mol, "Import structure file…" + smi, self.import_file)
-        self._act(m_mol, "Copy SMILES of structure" + smi, self.copy_smiles)
+        self._act(m_mol, "Import structure file…" + rd, self.import_file)
+        self._act(m_mol, "Copy SMILES of structure" + rd, self.copy_smiles)
         m_mol.addSeparator()
         self._act(m_mol, "Properties…", self.show_properties, "Ctrl+I",
                   "mdi.information-outline")
@@ -218,13 +219,45 @@ class MainWindow(QMainWindow):
                 sub.addAction(act)
 
         m_xtal = mb.addMenu("&Crystal")
+        self._act(m_xtal, "Crystal builder…", self.open_crystal_builder,
+                  "Ctrl+Shift+C", "mdi.cube-outline")
+        self._act(m_xtal, "Surface builder…", self.open_surface_builder,
+                  "Ctrl+Shift+F", "mdi.layers-outline")
+        self._act(m_xtal, "Graphene, nanotubes & fullerenes…",
+                  self.open_nano_builder, "Ctrl+Shift+G", "mdi.hexagon-multiple")
+        m_xtal.addSeparator()
+        for cat in crystal_library.CATEGORIES:
+            sub = m_xtal.addMenu(cat)
+            sub.setStyleSheet("QMenu { menu-scrollable: 1; }")
+            for c in crystal_library.LIBRARY.values():
+                if c.category == cat:
+                    act = QAction(c.name, self)
+                    act.triggered.connect(
+                        lambda _=False, k=c.key, n=c.name:
+                        self.load_entry("crystal", k, n))
+                    sub.addAction(act)
+        sub = m_xtal.addMenu("Classic crystal models")
         for _title, keys in library.CATEGORIES:
             if _title != "Crystal structures":
                 continue
             for key in keys:
                 act = QAction(library.label(key), self)
                 act.triggered.connect(lambda _=False, k=key: self.load_model(k))
-                m_xtal.addAction(act)
+                sub.addAction(act)
+
+        m_rx = mb.addMenu("&Reaction")
+        self._act(m_rx, "Reaction builder…", self.open_reaction_builder,
+                  "Ctrl+R", "mdi.flask-outline")
+        m_rx.addSeparator()
+        sub = m_rx.addMenu("Classic reactions")
+        sub.setStyleSheet("QMenu { menu-scrollable: 1; }")
+        for name, eq in reactions.EXAMPLES.items():
+            act = QAction(name, self)
+            act.setToolTip(eq)
+            act.triggered.connect(
+                lambda _=False, e=eq, n=name:
+                self.load_entry("reaction", e, n))
+            sub.addAction(act)
 
         m_struct = mb.addMenu("&Structure")
         self._act(m_struct, "Flatten 3D → 2D sketch", self.flatten_to_2d)
@@ -241,6 +274,27 @@ class MainWindow(QMainWindow):
             act.triggered.connect(lambda _=False, n=name: self._set_theme(n))
             group.addAction(act)
             theme_menu.addAction(act)
+        rend_menu = m_view.addMenu("3D renderer")
+        self._rend_group = QActionGroup(self)
+        self._rend_acts = {}
+        for kind, text in (("gl", "OpenGL (shaded spheres, smooth edges)"),
+                           ("classic", "Classic (vector drawing)")):
+            act = QAction(text, self, checkable=True)
+            act.setChecked(self.viewer.renderer == kind)
+            act.setEnabled(kind == "classic" or self.viewer.gl_available())
+            act.triggered.connect(lambda _=False, k=kind: self._set_renderer(k))
+            self._rend_group.addAction(act)
+            rend_menu.addAction(act)
+            self._rend_acts[kind] = act
+        self.viewer.renderer_changed.connect(self._on_renderer_changed)
+        style_menu = m_view.addMenu("3D style")
+        self._style_group = QActionGroup(self)
+        for key, text in viewer3d.STYLE_LABELS.items():
+            act = QAction(text, self, checkable=True)
+            act.setChecked(self.viewer.style == key)
+            act.triggered.connect(lambda _=False, k=key: self.viewer.set_style(k))
+            self._style_group.addAction(act)
+            style_menu.addAction(act)
         m_view.addSeparator()
         self._act(m_view, "Show 3D View", lambda: self.tabs.setCurrentIndex(0))
         self._act(m_view, "Show 2D Sketch", lambda: self.tabs.setCurrentIndex(1))
@@ -301,17 +355,27 @@ class MainWindow(QMainWindow):
         if not data:
             return
         kind, value = data
-        if kind == "model":
-            self.load_model(value)
-        else:
-            self.build_smiles(value, item.text(0))
+        self.load_entry(kind, value, item.text(0))
 
     def load_model(self, key):
-        self.viewer.set_molecule(library.make(key))
+        self.load_entry("model", key, library.label(key))
+
+    def load_entry(self, kind, value, label=None):
+        """Build a library entry (see `entries`) into the 3D view and mirror
+        it into the 2D sketch. Reports a failure instead of raising."""
+        try:
+            mol = entries.build(kind, value, label)
+        except (BuildError, KeyError, ValueError) as exc:
+            QMessageBox.warning(self, "Cannot build", str(exc.args[0]
+                                                          if exc.args else exc))
+            return False
+        self.viewer.set_molecule(mol)
         self._sync_sketch(force=True)
         self.tabs.setCurrentIndex(0)
         self._retitle()
-        self.statusBar().showMessage(f"Loaded {library.label(key)}")
+        note = f" ({mol.formula()})" if mol.formula() and not mol.notes else ""
+        self.statusBar().showMessage(f"Loaded {label or mol.label}{note}")
+        return True
 
     def _sync_sketch(self, force=False):
         """Mirror the current 3D molecule into the 2D sketch as a proper
@@ -328,8 +392,8 @@ class MainWindow(QMainWindow):
 
     def _do_sync_sketch(self):
         mol = self.viewer.mol
-        if not mol.atoms:
-            self.sketch.clear()
+        if not mol.atoms or mol.notes or len(mol.atoms) > 400:
+            self.sketch.clear()             # a lattice / scene has no 2D form
             return
         if not mol.crystal and rdkit_io.available():
             smiles = rdkit_io.smiles_from_structure(mol.atoms, mol.bonds)
@@ -351,28 +415,33 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------ drag-and-drop from library
     def _compound_2d(self, kind, value):
         """The 2D graph (atoms [el,x,y], bonds) for a library entry, or
-        None (crystal, or SMILES compound without RDKit)."""
-        if kind == "model":
-            mol = library.make(value)
-            if mol.crystal:
-                return None
-            if rdkit_io.available():
-                smi = rdkit_io.smiles_from_structure(mol.atoms, mol.bonds)
-                if smi:
-                    try:
-                        a2, b2 = rdkit_io.sketch_from_smiles(smi)
-                        if a2:
-                            return a2, b2
-                    except Exception:               # noqa: BLE001
-                        pass
-            return self._flatten_2d(mol)
-        if not rdkit_io.available():
+        None (a crystal, surface or reaction has no skeletal form)."""
+        if kind not in ("model", "compound", "smiles"):
             return None
+        smi = entries.smiles_of(kind, value)
+        if smi and rdkit_io.available():
+            try:
+                a2, b2 = rdkit_io.sketch_from_smiles(smi)
+                if a2:
+                    return a2, b2
+            except Exception:                       # noqa: BLE001
+                pass
         try:
-            a2, b2 = rdkit_io.sketch_from_smiles(value)
-            return (a2, b2) if a2 else None
-        except Exception:                           # noqa: BLE001
+            mol = entries.build(kind, value)
+        except (BuildError, KeyError, ValueError):
             return None
+        if mol.crystal:
+            return None
+        if kind == "model" and rdkit_io.available():
+            smi = rdkit_io.smiles_from_structure(mol.atoms, mol.bonds)
+            if smi:
+                try:
+                    a2, b2 = rdkit_io.sketch_from_smiles(smi)
+                    if a2:
+                        return a2, b2
+                except Exception:                   # noqa: BLE001
+                    pass
+        return self._flatten_2d(mol)
 
     def _on_reattach(self, atom, anchor):
         """A row was dragged onto another in the structure tree."""
@@ -386,22 +455,17 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(self.viewer.status.text())
 
     def _compound_3d(self, kind, value):
-        """The 3D `Molecule` for a library entry, or None (SMILES compound
-        without RDKit)."""
-        if kind == "model":
-            return library.make(value)
-        if not rdkit_io.available():
-            return None
+        """The 3D `Molecule` for a library entry, or None (with the reason
+        in the status bar)."""
         try:
-            return rdkit_io.molecule_from_smiles(value)
-        except Exception:                           # noqa: BLE001
+            return entries.build(kind, value)
+        except (BuildError, KeyError, ValueError) as exc:
+            self.statusBar().showMessage(str(exc.args[0] if exc.args else exc))
             return None
 
     def _on_drop_compound_3d(self, kind, value):
         mol = self._compound_3d(kind, value)
         if mol is None:
-            self.statusBar().showMessage(
-                "Install RDKit to build named compounds in 3D.")
             return
         merging = bool(self.viewer.mol.atoms) and not self.viewer.mol.crystal \
             and not mol.crystal
@@ -415,8 +479,8 @@ class MainWindow(QMainWindow):
         result = self._compound_2d(kind, value)
         if result is None:
             self.statusBar().showMessage(
-                "Can't place that in 2D (crystal, or install RDKit for "
-                "named compounds).")
+                "Can't place that in 2D (crystals, surfaces and reactions "
+                "have no skeletal form).")
             return
         self.sketch.add_fragment(result[0], result[1], x, y)
         self.tabs.setCurrentIndex(1)
@@ -476,6 +540,18 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Flattened 3D model into the 2D sketch "
                                      "(re-run to match the current rotation)")
 
+    def _set_renderer(self, kind):
+        used = self.viewer.set_renderer(kind)
+        QSettings(*style._SETTINGS).setValue("renderer", used)
+        if used != kind:
+            self.statusBar().showMessage(self.viewer.renderer_note
+                                         or "OpenGL is not available here.")
+
+    def _on_renderer_changed(self, kind):
+        act = self._rend_acts.get(kind)
+        if act is not None:
+            act.setChecked(True)
+
     def _set_theme(self, name):
         style.apply_style(QApplication.instance(), name)
 
@@ -495,39 +571,45 @@ class MainWindow(QMainWindow):
         if dlg.exec_() != MoleculeExplorer.Accepted:
             return
         choice = dlg.result()
-        if not choice:
-            return
-        kind, value, name = choice
-        if kind == "model":
-            self.load_model(value)
-        else:
-            self.build_smiles(value, name)
+        if choice:
+            kind, value, name = choice
+            self.load_entry(kind, value, name)
 
     def from_smiles(self):
-        if not self._need_rdkit():
-            return
         text, ok = QInputDialog.getText(
             self, "Build from SMILES",
             "Enter a SMILES string (e.g. CCO, c1ccccc1, CC(=O)O):")
-        if not ok or not text.strip():
-            return
-        self.build_smiles(text.strip())
+        if ok and text.strip():
+            self.build_smiles(text.strip())
 
     def build_smiles(self, smiles, label=None):
-        """Build *smiles* into the 3D viewer and 2D sketch (needs RDKit)."""
-        if not self._need_rdkit():
-            return
-        try:
-            mol = rdkit_io.molecule_from_smiles(smiles, label=label)
-            self.viewer.set_molecule(mol)
-            self._sync_sketch(force=True)
-            self.tabs.setCurrentIndex(0)
-            self._retitle()
-            shown = label or smiles
-            self.statusBar().showMessage(f"Built {shown} with RDKit "
-                                         f"({mol.formula()})")
-        except Exception as exc:                    # noqa: BLE001
-            QMessageBox.warning(self, "SMILES failed", str(exc))
+        """Build *smiles* into the 3D viewer and 2D sketch — with RDKit when
+        installed, otherwise the built-in builder."""
+        if not self.load_entry("smiles", smiles, label):
+            return False
+        engine = "RDKit" if rdkit_io.available() else "the built-in builder"
+        self.statusBar().showMessage(
+            f"Built {label or smiles} with {engine} "
+            f"({self.viewer.mol.formula()})")
+        return True
+
+    # ------------------------------------------------------------ builders
+    def _run_dialog(self, dlg):
+        if dlg.exec_() == dlg.Accepted:
+            kind, value, label = dlg.entry()
+            self.load_entry(kind, value, label)
+
+    def open_crystal_builder(self):
+        self._run_dialog(builders_ui.CrystalDialog(self))
+
+    def open_surface_builder(self):
+        self._run_dialog(builders_ui.SurfaceDialog(self))
+
+    def open_nano_builder(self):
+        self._run_dialog(builders_ui.NanoDialog(self))
+
+    def open_reaction_builder(self):
+        self._run_dialog(builders_ui.ReactionDialog(self))
 
     def import_file(self):
         if not self._need_rdkit():
@@ -750,8 +832,7 @@ class MainWindow(QMainWindow):
         if not path.lower().endswith(".png"):
             path += ".png"
         if self.tabs.currentIndex() == 0:
-            document.export_png(path, self.viewer.export_specs(1200, 1000),
-                                1200, 1000)
+            self.viewer.render_image(1600, 1200).save(path, "PNG")
         else:
             self.sketch.image(1200, 1000).save(path, "PNG")
         self.statusBar().showMessage(f"Exported {os.path.basename(path)}")
@@ -795,7 +876,18 @@ class MainWindow(QMainWindow):
 
 def _key_color(key):
     """A representative element colour for a library entry's tree icon."""
-    from . import elements
     if library.is_crystal(key):
         return "#9aa0a6"
     return elements.color("C")
+
+
+_KIND_COLORS = {"crystal": "#9aa0a6", "surface": "#b08d6e", "nano": "#4d5560",
+                "reaction": "#159c74"}
+
+
+def _entry_color(data):
+    """Tree-icon colour for a ``(kind, value)`` library entry."""
+    kind, value = data
+    if kind == "model":
+        return _key_color(value)
+    return _KIND_COLORS.get(kind, elements.color("C"))

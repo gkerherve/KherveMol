@@ -23,9 +23,9 @@ Everything you build stays as ordinary vector geometry you can export.</p>
 
 <h3>The two tabs</h3>
 <ul>
-<li><b>3D View</b> — an interactive ball-and-stick model. Atoms are lit
-CPK spheres; bonds are sticks (single / double / triple). Crystals are
-drawn as wireframe unit cells.</li>
+<li><b>3D View</b> — an interactive OpenGL model. Atoms are lit CPK
+spheres; bonds are sticks (single / double / triple). Crystals show their
+unit cell as an outline.</li>
 <li><b>2D Sketch</b> — a proper <i>skeletal</i> structural formula (line
 bonds, carbons as vertices, heteroatoms lettered, hydrogens implicit).
 Loading or building a molecule mirrors it here automatically.</li>
@@ -141,13 +141,14 @@ you've assembled into a 3D model.</p>
 
 <h3>Library &amp; elements</h3>
 <ul>
-<li>The <b>left library tree</b> (and the Molecule/Crystal menus) list the
-built-in 3D models — small molecules, alcohols &amp; acids, hydrocarbons,
-polymers, and crystal unit cells (SC, BCC, FCC, HCP, diamond, NaCl, CsCl,
-zinc blende, fluorite, perovskite) — <b>and 300+ named compounds</b>
-(drugs, amino acids, sugars, terpenes, steroids, monomers, plus whole
-homologous series) grouped by family. The built-in models build without
-RDKit; the named compounds build from SMILES (RDKit). The <b>Explorer</b>
+<li>The <b>left library tree</b> lists everything KherveMol can build,
+in sections: <b>Molecules</b> (700+ — gases, acids, salts, oxides, VSEPR
+shapes, hydrocarbons, aromatics, biomolecules, medicines…),
+<b>Crystals</b> (120+), <b>Surfaces</b> (60 ready faces), <b>Graphene,
+nanotubes &amp; fullerenes</b>, <b>Reactions</b> (36 classics) and the
+original <b>Classic 3D models</b>. Everything builds without RDKit — a
+built-in SMILES parser and 3D embedder does the work (RDKit takes over
+when installed, for force-field-cleaned geometry). The <b>Explorer</b>
 (Ctrl+L) is the same list with search and a preview.</li>
 <li>The <b>periodic-table dock</b> along the bottom shows the whole table
 (all 118 elements, CPK-coloured with atomic numbers). Click one to make it
@@ -162,11 +163,64 @@ the dock from <i>View</i>.</li>
 
 <h3>Molecule Explorer</h3>
 <p><b>Molecule ▸ Explorer…</b> (Ctrl+L, or the magnifier on the toolbar)
-opens a searchable browser of structures: the built-in 3D models plus
-~120 named compounds (solvents, drugs, amino acids, sugars, aromatics,
-nucleobases, functional groups…). Type in the search box to filter by
-name, pick an entry to preview it, then <b>Build in 3D</b>. The built-in
-models build with or without RDKit; the named compounds need RDKit.</p>
+opens one searchable browser of every molecule, crystal, surface,
+nanostructure and reaction. Type in the search box to filter by name,
+formula or family, pick an entry to preview it in 3D, then <b>Build in
+3D</b>.</p>
+
+<h3>Crystals, surfaces and carbon nanostructures</h3>
+<p>The <b>Crystal</b> menu opens three builders (their entries are also in
+the library tree):</p>
+<ul>
+<li><b>Crystal builder…</b> (Ctrl+Shift+C) — any of 120+ crystals, and how
+many unit cells to show along a, b and c. The block is drawn with its cell
+outline and the bonds between nearest neighbours; atoms on a cell face are
+drawn in every cell that shares it (untick for the true cell contents). The
+summary gives the space group, lattice, atoms per cell and density.</li>
+<li><b>Surface builder…</b> (Ctrl+Shift+F) — a slab of any crystal cut
+along any plane: type Miller indices (<code>111</code>, <code>1 1 0</code>,
+<code>1-10</code>) or four hexagonal indices (<code>0001</code>,
+<code>10-10</code>), then cells, layers and <i>termination</i> (automatic =
+the widest gap between planes, breaking the fewest bonds). Slabs are
+bulk-terminated: no relaxation or reconstruction.</li>
+<li><b>Graphene, nanotubes &amp; fullerenes…</b> (Ctrl+Shift+G) — graphene
+sheets (1–6 layers, AB / ABA / ABC / AA or twisted), graphite surfaces, armchair
+and zigzag nanoribbons, quantum dots, a vacancy or nitrogen doping, (n,m)
+nanotubes, single- or multi-walled, and C20 / C60 / C70 / C80 … cages.</li>
+</ul>
+<p>Crystals, surfaces and sheets are fixed lattices: they rotate and zoom
+but their atoms are not editable.</p>
+
+<h3>Reactions</h3>
+<p><b>Reaction ▸ Reaction builder…</b> (Ctrl+R) takes an equation and draws
+it in 3D. Write <code>2 H2 + O2 -&gt; 2 H2O</code>, <code>CH4 + 2 O2 -&gt;
+CO2 + 2 H2O</code> or <code>N2 + 3 H2 &lt;=&gt; 2 NH3</code> (arrows
+<code>-&gt; =&gt; → &lt;=&gt; ⇌ =</code> with a space each side; spaces round
+each <code>+</code>). Species are compound names or formulas
+(<code>H2O</code>, <code>ethanol</code>, <code>NH4+</code>,
+<code>SO4^2-</code>), an element (<code>Fe</code>, <code>Na+</code>) or
+<code>smiles:CCO</code>.</p>
+<ul>
+<li>With <i>Balance the coefficients for me</i> ticked, KherveMol finds the
+smallest whole coefficients that conserve every element <b>and the
+charge</b> (coefficients you give are kept). Untick it to check your own —
+the table shows any element that differs.</li>
+<li>The scene puts the molecules left to right (a coefficient up to 6 draws
+that many copies), with plus signs, the arrow (double for ⇌) and the formula
+under each species. It is read-only; rotate and zoom as usual.</li>
+<li><b>Reaction ▸ Classic reactions</b> holds 36 examples — combustion,
+photosynthesis, Haber and contact processes, neutralisation, esterification,
+thermite…</li>
+</ul>
+
+<h3>3D rendering</h3>
+<p>The 3D view is drawn with <b>OpenGL</b>: per-pixel lit spheres and
+cylinders with specular highlights, a rim light, depth fog and 4×
+anti-aliasing; each bond is drawn in halves coloured by its two atoms.
+<b>View ▸ 3D renderer</b> switches to the <i>Classic</i> vector renderer
+(used automatically where OpenGL is not available). <b>View ▸ 3D style</b>
+chooses <i>Ball &amp; stick</i>, <i>Space filling</i> or <i>Sticks</i>.
+<b>Export PNG</b> renders the current view at 1600 × 1200.</p>
 
 <h3>Properties</h3>
 <p><b>Molecule ▸ Properties…</b> (Ctrl+I) shows the current molecule's
@@ -193,20 +247,23 @@ appears as a red line in the chat.</p>
 <li><b>From SMILES…</b> — type a SMILES string (e.g. <code>CCO</code>,
 <code>c1ccccc1</code>, <code>CC(=O)O</code>) and KherveMol embeds a real
 3D conformer (with hydrogens, force-field cleaned) into the 3D view and a
-flat depiction into the 2D sketch.</li>
+flat depiction into the 2D sketch. Without RDKit the built-in builder does
+this too.</li>
 <li><b>Import structure file…</b> — open a <code>.mol</code>,
 <code>.sdf</code> or <code>.pdb</code> file.</li>
 <li><b>Copy SMILES of structure</b> — best-effort canonical SMILES of the
 current model, to the clipboard.</li>
 </ul>
-<p>Everything else works without RDKit; the menu items say when it's
-needed.</p>
+<p>Everything else works without RDKit; only structure-file import and
+<i>Copy SMILES</i> need it.</p>
 
 <h3>Files</h3>
 <ul>
 <li><b>Save / Open</b> — the native <code>.kmol</code> format stores the
-3D model, its orientation, and the 2D sketch.</li>
-<li><b>Export PNG</b> — a flattened image of the current tab.</li>
+3D model, its orientation, a reaction's annotations, and the 2D
+sketch.</li>
+<li><b>Export PNG</b> — an image of the current tab (the 3D view at
+1600 × 1200 through the active renderer).</li>
 <li><b>Export SVG (KhervePaint)</b> (Ctrl+Shift+E) — writes an SVG that
 <b>opens in KhervePaint</b> as native, editable items: each atom becomes a
 gradient-filled ellipse and each bond a line. Exports the 3D ball-and-stick

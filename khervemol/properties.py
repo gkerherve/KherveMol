@@ -66,9 +66,14 @@ def compute(mol):
         ("Bonds", str(len(mol.bonds))),
     ]
     if mol.crystal:
-        rows.append(("Type", "Crystal unit cell"))
-        rows.append(("Note", "Molecular descriptors do not apply to a "
-                             "periodic lattice."))
+        if mol.notes:
+            rows.append(("Type", "Reaction scene"))
+            rows.append(("Note", "The formula and weight are the sum of "
+                                 "every species drawn, not one molecule."))
+        else:
+            rows.append(("Type", "Crystal / lattice"))
+            rows.append(("Note", "Molecular descriptors do not apply to a "
+                                 "periodic lattice."))
         return rows
 
     adv = rdkit_io.descriptors_from_structure(mol.atoms, mol.bonds)

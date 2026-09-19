@@ -27,7 +27,7 @@ from PyQt5.QtWidgets import (QComboBox, QDialog, QDialogButtonBox, QDockWidget,
                              QVBoxLayout, QWidget)
 
 from . import ai_providers as providers
-from . import icons, rdkit_io
+from . import icons
 
 _SETTINGS = ("Kherve", "KherveMol")
 
@@ -273,9 +273,6 @@ class AiDock(QDockWidget):
         self._append("system", "Ask a chemistry question, or say “draw "
                      "caffeine”. Set your provider, model and API key with "
                      "the ⚙ button first.")
-        if not rdkit_io.available():
-            self._append("system", "Note: install RDKit (pip install rdkit) "
-                         "for the assistant to render molecules it suggests.")
 
     # ------------------------------------------------------------ helpers
     def _refresh_provider_label(self):
@@ -347,14 +344,12 @@ class AiDock(QDockWidget):
         smiles = extract_smiles(reply)
         if not smiles:
             return
-        if not rdkit_io.available():
-            self._append("system", f"(Install RDKit to render this — "
-                         f"SMILES: {smiles})")
-            return
         try:
-            self._window.build_smiles(smiles, label=smiles)
-            self._append("system", f"✓ Built {smiles} in the 3D view + "
-                         "2D sketch.")
+            if self._window.build_smiles(smiles, label=smiles):
+                self._append("system", f"✓ Built {smiles} in the 3D view + "
+                             "2D sketch.")
+            else:
+                self._append("error", f"Could not build {smiles}.")
         except Exception as exc:                  # noqa: BLE001
             self._append("error", f"Could not build {smiles}: {exc}")
 

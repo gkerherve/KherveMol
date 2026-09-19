@@ -208,7 +208,7 @@ def test_library_leaf_offers_a_draggable_payload(qapp):
     assert leaf.flags() & Qt.ItemIsDragEnabled
     md = w.tree.mimeData([leaf])
     assert md.formats() == [dnd.MIME_COMPOUND]
-    assert dnd.decode(md.data(dnd.MIME_COMPOUND))[0] == "model"
+    assert dnd.decode(md.data(dnd.MIME_COMPOUND))[0] in ("model", "compound")
 
 
 def test_drop_a_library_compound_on_the_3d_view(qapp):
@@ -335,7 +335,7 @@ def test_library_tree_includes_catalog(qapp):
         return n
     total = sum(leaves(w.tree.topLevelItem(i))
                 for i in range(w.tree.topLevelItemCount()))
-    assert total > 300                              # models + 328 catalog
+    assert total > 800          # molecules, crystals, surfaces, reactions…
 
 
 def test_sketch_valence_enforced(qapp):

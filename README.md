@@ -7,38 +7,49 @@
 KherveMol is a native PyQt5 desktop app in the Kherve family. It pairs an
 interactive **3D ball-and-stick** viewer/builder with a flat **2D skeletal
 sketcher**, over one shared molecular model. There are no heavy chemistry
-dependencies — the 3D look is a pure-Python isometric projection (no
-OpenGL), so it runs with just PyQt5 and qtawesome.
+dependencies: the 3D view is drawn with **OpenGL** (shaded spheres and
+cylinders, smooth edges) through PyQt5 alone — no PyOpenGL — and falls back to a
+pure-Python vector renderer where OpenGL is unavailable. RDKit is optional.
 
 ![KherveMol](docs/screenshot.png)
 
 ## Features
 
-- **3D ball-and-stick viewer** — lit CPK spheres and single/double/triple
-  bond sticks, depth-sorted so it reads as 3D. Drag to orbit, wheel to
-  zoom, snap to any face with the view cube.
+- **OpenGL 3D viewer** — per-pixel lit spheres and cylinders with
+  specular highlights, rim light, depth fog and 4× anti-aliasing; ball &
+  stick, space-filling or sticks. Drag to orbit, wheel to zoom, snap to
+  any face with the view cube. Thousands of atoms stay smooth.
 - **Build molecules by hand** — click an atom, then click an element to
   bond a new atom on. The builder respects each element's valence and
   refuses to over-bond. Drag an atom to bend a bond.
-- **30+ built-in structures** — small molecules, alcohols & acids,
-  hydrocarbons, polymer repeat units, and crystal unit cells
-  (simple cubic, BCC, FCC, HCP, diamond, NaCl, CsCl) drawn as wireframe
-  cells.
+- **700+ molecules, built without RDKit** — gases, acids, salts, oxides,
+  VSEPR shapes, hydrocarbons, aromatics, biomolecules and the common
+  medicines. A built-in SMILES parser and 3D embedder turns any SMILES
+  into a 3D model (RDKit is used instead, when installed).
+- **120+ crystals** — metals, semiconductors, salts, oxides, layered
+  materials (fcc, bcc, hcp, diamond, zinc blende, wurtzite, rock salt,
+  fluorite, rutile, perovskite, quartz, corundum, MoS₂…), any block of
+  cells, with the cell outline and bonds.
+- **Surfaces** — a slab of any crystal cut along any (hkl) plane:
+  Si(111), rutile(110), Cu(100), GaN(10-10)…
+- **Graphene, nanotubes & fullerenes** — graphene sheets (AA / AB / ABC,
+  twisted bilayers, vacancies, doping), nanoribbons, quantum dots,
+  graphite surfaces, (n,m) nanotubes and C20 / C60 / C70… cages.
+- **Reactions** — type `CH4 + O2 -> CO2 + H2O`; KherveMol balances atoms
+  and charge and lays the balanced reaction out in 3D, with the molecules,
+  coefficients, plus signs and arrow. 36 classic reactions included.
 - **2D structure sketcher** — proper skeletal formulae (line bonds,
   lettered heteroatoms, implicit H). Loading/building mirrors the 3D model
   into it automatically; **Build 3D from 2D sketch** (Ctrl+B) goes the other
   way. Right-click menus in both views.
-- **300+ named compounds** in the Explorer — drugs, amino acids, sugars,
-  terpenes, steroids, monomers, plus whole homologous series.
 - **Full periodic table** — all 118 elements, CPK-coloured, as a dockable
   picker; the active element can be bonded into the 3D structure (any
   element, not just a fixed palette).
 - **Export SVG for KhervePaint** — molecules export to SVG that opens in
   [KhervePaint](https://github.com/gkerherve/KhervePaint) as editable,
   gradient-filled vector items.
-- **Molecule Explorer** — a searchable browser of the built-in models plus
-  ~120 named compounds (drugs, amino acids, sugars, solvents, aromatics,
-  nucleobases…), with a live preview and one-click build.
+- **Explorer** — one searchable browser of every molecule, crystal,
+  surface, nanostructure and reaction, with a live 3D preview.
 - **Properties** — formula and molecular weight for any molecule; with
   RDKit, exact mass, LogP, TPSA, H-bond donors/acceptors, rings, and
   InChI / InChIKey.
@@ -62,8 +73,9 @@ Requires Python 3.12+ with PyQt5 and qtawesome.
 
 ## Quick start
 
-1. Pick a structure from the **Molecule** or **Crystal** menu (or the
-   library tree on the left).
+1. Pick a structure from the library tree on the left (molecules,
+   crystals, surfaces, graphene & nanotubes, reactions), the **Crystal**
+   or **Reaction** menus, or the **Explorer** (Ctrl+L).
 2. In **3D View**, drag to rotate, use the wheel to zoom, and the view
    cube to snap to standard orientations.
 3. To build: click an atom (green ring), pick a bond order, then click an
