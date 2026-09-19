@@ -1,7 +1,7 @@
 """Interactive 3D ball-and-stick viewer / builder.
 
-A `Viewer3D` shows a `model.Molecule` as a depth-sorted ball-and-stick
-model and lets you:
+A `Viewer3D` shows a `model.Molecule` as a ball-and-stick model and lets
+you:
 
 * **orbit** by dragging the background (azimuth / elevation);
 * **zoom** with the mouse wheel;
@@ -11,7 +11,22 @@ model and lets you:
   palette to bond a new atom on (valence-checked), drag an atom to bend
   a bond, or delete the selected atom.
 
-Crystals are fixed lattices — rotatable and zoomable but not atom-editable.
+Crystals and reaction scenes are fixed — rotatable and zoomable but not
+atom-editable (annotations in ``mol.notes`` are drawn as an overlay).
+
+Two interchangeable renderers sit in the same layout slot:
+
+* ``"gl"`` (default where available) — `glview.GLView`, OpenGL impostor
+  spheres and cylinders with MSAA, lighting, fog and selection halos;
+* ``"classic"`` — the inner `_View`, a `QGraphicsView` painting the
+  depth-sorted shape specs of `model`; always works, also offscreen.
+
+`set_renderer` swaps them (keeping the molecule, selection and zoom);
+`gl_available()` says whether GL is worth trying; if GL fails at run time
+the viewer falls back to classic on its own and notes it in ``status``.
+`style` chooses ball-and-stick / space-filling / sticks (GL only),
+`set_background` the gradient behind the model, and `render_image(w, h)`
+rasterises the current view for PNG export.
 
 Copyright (C) 2026 Gwilherm Kerherve
 
@@ -23,13 +38,13 @@ the Free Software Foundation, either version 3 of the License, or
 
 import math
 
-from PyQt5.QtCore import QEvent, QRectF, QSize, Qt, pyqtSignal
+from PyQt5.QtCore import QRectF, QSize, Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QColor, QPainter, QPen
 from PyQt5.QtWidgets import (QComboBox, QGraphicsEllipseItem, QGraphicsScene,
                              QGraphicsView, QHBoxLayout, QLabel, QPushButton,
                              QSlider, QToolButton, QVBoxLayout, QWidget)
 
-from . import dnd, elements, icons, model, render
+from . import elements, glview, icons, model, render
 
 _HALF = math.pi / 2.0
 _W = 400.0                               # preview model-box size (scene units)
@@ -41,11 +56,13 @@ STANDARD_VIEWS = [
 ]
 
 
-_SEL_COLOR = "#159c74"                   # the primary (last-clicked) atom
-_CO_SEL_COLOR = "#7fbf3f"                # other Ctrl-selected atoms
+_SEL_COLOR = glview.SEL_COLOR            # the primary (last-clicked) atom
+_CO_SEL_COLOR = glview.CO_SEL_COLOR      # other Ctrl-selected atoms
+STYLES = glview.STYLES
+STYLE_LABELS = glview.STYLE_LABELS
 
 
-class _View(QGraphicsView):
+class _View(glview.InputMixin, QGraphicsView):
     """Renders the model. Drag empty space to orbit; drag a sphere to move
     that atom; click a sphere to select it (Ctrl+click to add it to the
     selection); Tab steps through the atoms; wheel to zoom."""
@@ -64,13 +81,15 @@ class _View(QGraphicsView):
         self.setFrameShape(QGraphicsView.NoFrame)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.setFocusPolicy(Qt.StrongFocus)     # so Tab reaches keyPressEvent
-        self.setAcceptDrops(True)               # drop compounds from the library
+        self._init_input()      # Tab stepping, Esc, library drops
         self._press = None
         self._press_atom = None
         self._mode = None               # None | "orbit" | "drag"
         self._frozen = None
         self._zoom = 1.0
+
+    def set_background(self, top, bottom=None):
+        self.setBackgroundBrush(QColor(top))
 
     def rebuild(self):
         o = self._o
@@ -153,39 +172,6 @@ class _View(QGraphicsView):
             o.hit = ("bond", bond) if bond is not None else (None, -1)
         o.context.emit(event.globalPos())
 
-    # ------------------------------------------- drop a compound from the library
-    def dragEnterEvent(self, event):
-        if event.mimeData().hasFormat(dnd.MIME_COMPOUND):
-            event.acceptProposedAction()
-
-    def dragMoveEvent(self, event):
-        if event.mimeData().hasFormat(dnd.MIME_COMPOUND):
-            event.acceptProposedAction()
-
-    def dropEvent(self, event):
-        if not event.mimeData().hasFormat(dnd.MIME_COMPOUND):
-            return
-        kind, value = dnd.decode(event.mimeData().data(dnd.MIME_COMPOUND))
-        self._o.compound_dropped.emit(kind, value)
-        event.acceptProposedAction()
-
-    def event(self, e):
-        """Tab normally moves focus out of the view — claim it instead, so it
-        can step the selection from atom to atom."""
-        if e.type() == QEvent.KeyPress and e.key() in (Qt.Key_Tab,
-                                                       Qt.Key_Backtab):
-            back = (e.key() == Qt.Key_Backtab
-                    or e.modifiers() & Qt.ShiftModifier)
-            self._o.step_selection(-1 if back else 1)
-            return True
-        return super().event(e)
-
-    def keyPressEvent(self, event):
-        if event.key() == Qt.Key_Escape:
-            self._o.cancel_pick()
-        else:
-            super().keyPressEvent(event)
-
     def mousePressEvent(self, event):
         if event.button() != Qt.LeftButton:
             return
@@ -251,6 +237,10 @@ class Viewer3D(QWidget):
     selection_changed = pyqtSignal()        # the selected atom(s) changed
     molecule_changed = pyqtSignal()         # a different structure was loaded
     compound_dropped = pyqtSignal(str, str)  # a library leaf was dropped here
+    renderer_changed = pyqtSignal(str)      # "gl" / "classic" now in use
+
+    #: Set (to the reason) once GL failed at run time, so no viewer retries.
+    _gl_error = None
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -261,15 +251,14 @@ class Viewer3D(QWidget):
         self.order = 1
         self.hit = (None, -1)           # what the last right-click landed on
         self._pick = None               # (anchor, order) while picking on screen
+        self._style = "ball_and_stick"
+        self._background = (glview.BG_TOP, glview.BG_BOTTOM)
+        self.renderer_note = ""         # why GL was given up, if it was
 
-        self.view = _View(self)
-        self.view.atom_clicked.connect(self._on_atom_clicked)
-        self.view.atom_moved.connect(self._on_atom_moved)
-        self.view.rotated.connect(self.view_changed)
-
-        root = QVBoxLayout(self)
+        self._root = root = QVBoxLayout(self)
         root.setContentsMargins(4, 4, 4, 4)
         root.addLayout(self._view_toolbar())
+        self.view = self._make_view("gl" if self.gl_available() else "classic")
         root.addWidget(self.view, 1)
 
         self.status = QLabel("")
@@ -277,6 +266,7 @@ class Viewer3D(QWidget):
         root.addWidget(self.status)
 
         root.addLayout(self._bond_row())
+        self.style_combo.setEnabled(self.renderer == "gl")
         root.addLayout(self._palette_row())
 
     # ------------------------------------------------------------------ UI
@@ -298,7 +288,7 @@ class Viewer3D(QWidget):
         reset = QToolButton()
         reset.setText("Reset zoom")
         reset.setAutoRaise(True)
-        reset.clicked.connect(self.view.reset_zoom)
+        reset.clicked.connect(lambda: self.view.reset_zoom())
         row.addWidget(reset)
         return row
 
@@ -310,6 +300,15 @@ class Viewer3D(QWidget):
         self.bond_slider.setRange(80, 300)          # 0.8 .. 3.0
         self.bond_slider.valueChanged.connect(self._on_bond)
         row.addWidget(self.bond_slider, 1)
+        row.addWidget(QLabel("Style:"))
+        self.style_combo = QComboBox()
+        for key in STYLES:
+            self.style_combo.addItem(STYLE_LABELS[key], key)
+        self.style_combo.setToolTip(
+            "Ball & stick, space filling or sticks (OpenGL renderer)")
+        self.style_combo.currentIndexChanged.connect(
+            lambda i: self.set_style(self.style_combo.itemData(i)))
+        row.addWidget(self.style_combo)
         self.labels_btn = QToolButton()
         self.labels_btn.setText("Labels")
         self.labels_btn.setCheckable(True)
@@ -370,6 +369,109 @@ class Viewer3D(QWidget):
         row.addWidget(self.del_btn)
         row.addStretch(1)
         return row
+
+    # ------------------------------------------------------------ renderer
+    @staticmethod
+    def gl_available():
+        """True when the OpenGL renderer can be tried: not the offscreen /
+        minimal Qt platforms, not ``KHERVEMOL_RENDERER=classic``, and GL has
+        not already failed in this process."""
+        return Viewer3D._gl_error is None and glview.gl_available()
+
+    @property
+    def renderer(self):
+        """``"gl"`` or ``"classic"`` — whichever view is showing."""
+        return "gl" if isinstance(self.view, glview.GLView) else "classic"
+
+    def _make_view(self, kind):
+        """Build one renderer's view, wired to this viewer's slots."""
+        if kind == "gl":
+            view = glview.GLView(self)
+            view.failed.connect(self._on_gl_failed)
+        else:
+            view = _View(self)
+        view.atom_clicked.connect(self._on_atom_clicked)
+        view.atom_moved.connect(self._on_atom_moved)
+        view.rotated.connect(self.view_changed)
+        view.set_background(*self._background)
+        if self._pick is not None:
+            view.setCursor(Qt.CrossCursor)
+        if hasattr(self, "style_combo"):    # not yet built during __init__
+            self.style_combo.setEnabled(kind == "gl")
+        return view
+
+    def set_renderer(self, kind):
+        """Switch between ``"gl"`` and ``"classic"`` in place, keeping the
+        molecule, selection and zoom. ``"gl"`` quietly stays classic when GL
+        is unavailable. Returns the renderer now in use."""
+        kind = "gl" if kind == "gl" and self.gl_available() else "classic"
+        if kind == self.renderer:
+            return kind
+        old = self.view
+        new = self._make_view(kind)
+        new._zoom = old._zoom
+        self._root.replaceWidget(old, new)
+        self.view = new
+        old.hide()
+        old.setParent(None)
+        old.deleteLater()
+        new.show()
+        new.rebuild()
+        self.renderer_changed.emit(kind)
+        return kind
+
+    def _on_gl_failed(self, message):
+        """GL could not start (or died): drop back to the classic view. Done
+        on the next event-loop turn — the failing widget is mid-call."""
+        message = " ".join(str(message).split()) or "unknown error"
+        Viewer3D._gl_error = message
+        QTimer.singleShot(0, lambda m=message: self._fall_back(m))
+
+    def _fall_back(self, message):
+        if self.renderer != "gl":
+            return
+        self.set_renderer("classic")
+        self.renderer_note = (f"OpenGL is unavailable ({message}) — using the "
+                              "classic renderer.")
+        self.status.setText(self.renderer_note)
+
+    # --------------------------------------------------- style / background
+    @property
+    def style(self):
+        """``"ball_and_stick"``, ``"space_filling"`` or ``"sticks"``."""
+        return self._style
+
+    @style.setter
+    def style(self, name):
+        self.set_style(name)
+
+    def set_style(self, name):
+        if name not in STYLES:
+            return
+        self._style = name
+        idx = self.style_combo.findData(name)
+        if idx >= 0 and idx != self.style_combo.currentIndex():
+            self.style_combo.blockSignals(True)
+            self.style_combo.setCurrentIndex(idx)
+            self.style_combo.blockSignals(False)
+        self.view.rebuild()
+        self.view_changed.emit()
+
+    def set_background(self, top, bottom=None):
+        """Vertical gradient behind the model (top → bottom colours; one
+        argument gives a flat colour). Suits the app theme."""
+        self._background = (top, top if bottom is None else bottom)
+        self.view.set_background(*self._background)
+
+    def render_image(self, width=1200, height=1000):
+        """The current view rendered at (width, height) as a QImage — the
+        GL framebuffer (4x MSAA) when GL is running, else the painter."""
+        if self.renderer == "gl":
+            img = self.view.render_image(width, height)
+            if img is not None:
+                return img
+        return render.render_image(self.export_specs(width, height),
+                                   int(width), int(height))
 
     # ------------------------------------------------------------- molecule
     def set_molecule(self, mol):
@@ -729,6 +831,16 @@ class Viewer3D(QWidget):
         else:
             super().keyPressEvent(event)
 
+    def _fixed_kind(self):
+        """Wording for a non-editable structure: a lattice, an annotated
+        (reaction) scene, or otherwise just a fixed structure."""
+        mol = self.mol
+        if str(mol.name).startswith(("crystal:", "surface:")):
+            return "fixed lattice"
+        if getattr(mol, "notes", None):
+            return "read-only scene"
+        return "fixed lattice" if mol.edges else "fixed structure"
+
     def _update_status(self):
         formula = self.mol.formula()
         head = f"{self.mol.label}   [{formula}]" if formula else self.mol.label
@@ -736,7 +848,7 @@ class Viewer3D(QWidget):
             self.join_btn.setEnabled(self.can_bond_selected(self.order))
         if not self.editable:
             self.status.setText(f"{head} — drag to rotate, wheel to zoom "
-                                "(fixed lattice).")
+                                f"({self._fixed_kind()}).")
             return
         if len(self.selection) >= 2:
             i, j = self.selection[-2], self.selection[-1]
