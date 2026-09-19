@@ -300,7 +300,8 @@ def test_editor2d_draw_and_bond(qapp):
     assert e.bonds == [[0, 1, 1]]
     e.canvas._add_or_cycle_bond(0, 1)          # cycles order
     assert e.bonds == [[0, 1, 2]]
-    assert e.formula() == "CO"
+    # the skeletal drawing implies two H on the carbon — it is formaldehyde
+    assert e.formula() == "CH₂O"
 
 
 def test_mainwindow_loads_and_syncs_2d(qapp):
@@ -359,3 +360,34 @@ def test_perovskite_and_new_crystals(qapp):
         assert mol.crystal and mol.edges, key
     # perovskite has the central TiO6 octahedron bonds
     assert library.make("perovskite").bonds
+
+
+def test_every_library_model_loads_through_the_window(qapp):
+    """The window-level path — structure tree, 2D mirror, properties —
+    exercised for every model. A tinted lattice atom carries a 5th slot and
+    used to crash the structure tree's tooltip."""
+    from khervemol import library, properties
+    from khervemol.mainwindow import MainWindow
+    w = MainWindow()
+    for name in library.names():
+        w.load_model(name)
+        assert w.viewer.mol.atoms, name
+        assert w.structure.topLevelItemCount() > 0, name
+        assert properties.compute(w.viewer.mol), name
+        assert w.viewer.export_specs(400, 300), name
+
+
+def test_every_stackable_crystal_survives_the_window(qapp):
+    from khervemol import library
+    from khervemol.mainwindow import MainWindow
+    w = MainWindow()
+    for name in library.names():
+        if not library.is_crystal(name) or not library.can_stack(name):
+            continue
+        w.load_model(name)
+        w.viewer.set_cells(2, 2, 2)
+        w.viewer.select_atom(0)
+        w.viewer.set_tilt(w.viewer.mol.cell_of(0), (10, 5, 0))
+        w.viewer.legend_btn.setChecked(True)
+        assert w.viewer.export_specs(400, 300), name
+        w.viewer.legend_btn.setChecked(False)

@@ -370,15 +370,17 @@ def test_plain_structures_have_no_notes():
 def test_status_wording_for_fixed_structures(viewer):
     viewer.set_molecule(_annotated())
     assert "read-only scene" in viewer.status.text()
+    assert viewer._fixed_kind() == "read-only scene"
     viewer.set_molecule(library.make("fcc"))
-    assert "fixed lattice" in viewer.status.text()
+    assert viewer._fixed_kind() == "fixed lattice"
     mol = library.make("fcc")
     mol.name = "crystal:custom"
     viewer.set_molecule(mol)
-    assert "fixed lattice" in viewer.status.text()
+    assert viewer._fixed_kind() == "fixed lattice"
+    assert "drag to rotate" in viewer.status.text()
     viewer.set_molecule(model.Molecule([["Ar", 0, 0, 0]], [], name="x",
                                        crystal=True))
-    assert "fixed structure" in viewer.status.text()
+    assert viewer._fixed_kind() == "fixed structure"
 
 
 def test_gl_render_image_draws_notes(viewer, qapp):

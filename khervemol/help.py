@@ -82,6 +82,43 @@ sliding in with its geometry intact.</li>
 one hidden behind another.</li>
 <li><b>Delete</b> — select an atom and press Delete (or the button).</li>
 <li><b>Labels</b> — toggle element symbols on the spheres.</li>
+<li><b>Atom colour…</b> — recolour the selected atom. On a molecule the
+colour rides on that atom; on a crystal it recolours every atom of the same
+element <b>and lattice site</b>.</li>
+<li><b>Legend</b> — a colour key beside the structure, one lit sphere per
+element and site. It is included in the PNG and SVG export.</li>
+<li><b>Polyhedra</b> — translucent coordination polyhedra: for every atom
+with four or more bonded neighbours, the faces those neighbours span (the
+VESTA look — perovskite's TiO<sub>6</sub> octahedra, diamond's tetrahedra).
+Greyed out when nothing is ≥4-coordinate.</li>
+</ul>
+
+<h3>Crystals &amp; unit cells</h3>
+<p>The <b>Crystal</b> menu holds the cubic family (simple cubic, BCC, FCC,
+HCP, diamond, NaCl, CsCl, zinc blende, fluorite, perovskite) and the six
+non-cubic <b>lattice systems</b> — tetragonal, orthorhombic, hexagonal,
+rhombohedral, monoclinic and triclinic — built from their lattice
+parameters <i>a, b, c, α, β, γ</i>, which the status line shows.</p>
+<p>A body- or face-centre atom of the same element as the corners would be
+invisible against them, so those hidden sites are <b>tinted</b>: blue for a
+body centre, salmon for a face centre, violet for an interior tetrahedral
+site, green for HCP's middle layer. The legend names them.</p>
+<ul>
+<li><b>Stack</b> — <i>Crystal ▸ Stack unit cells…</i> (Ctrl+U), or the
+<b>Supercell</b> boxes under the view, repeat the cell up to 12 times along
+each lattice vector. Cells stack along their <i>own</i> vectors, so a
+hexagonal or monoclinic supercell leans the way the crystal really does.
+Atoms, bonds and cell edges shared between neighbours are drawn once.</li>
+<li><b>Tilt</b> — click an atom, then use the <b>Tilt cell</b> boxes to
+rotate its unit cell. The rest of that cell is outlined in orange, so you
+can see which cell will move before you turn the boxes; your atom stays
+selected as you turn them, so each further turn rotates the same cell.
+A tilt is a <b>defect, not a detached grain</b>: the tilted cell shares its
+corner and face atoms with its neighbours, so they deform to follow and the
+lattice stays connected — nothing is duplicated, and a cell no tilted
+neighbour touches does not move at all.</li>
+<li><b>Right-click a crystal</b> for the same actions on the cell you
+clicked.</li>
 </ul>
 
 <h3>Structure outline</h3>
@@ -118,7 +155,15 @@ single → double → triple.</li>
 <li><b>Move</b> — drag an atom to move its <b>whole molecule</b>. <b>Atom</b>
 — click to re-label an atom to the active element. <b>Erase</b> — click an
 atom or bond to remove it.</li>
+<li><b>Show as</b> — draw the same graph as a <i>Skeletal</i> formula (the
+default), a <i>Structural formula</i> with every atom lettered, a
+<i>Lewis structure</i> with lone-pair dots on the sides no bond is using,
+or the <i>Condensed formula</i> alone. Lewis and condensed are views, so
+the drawing tools switch off there; SVG export follows the mode.</li>
 </ul>
+<p>The formula in the status bar counts the hydrogens a skeletal drawing
+leaves implicit, so a C–C–O sketch reads C<sub>2</sub>H<sub>6</sub>O rather
+than C<sub>2</sub>O.</p>
 <p>New bonds snap to a fixed length and 30° angles, so hand-drawn chains
 keep tidy (≈120°) geometry. The sketch also <b>enforces valence</b>: it
 won't add or raise a bond beyond what an atom can hold (oxygen stops at two

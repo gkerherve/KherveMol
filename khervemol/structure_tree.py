@@ -289,7 +289,9 @@ class StructureTree(QTreeWidget):
 
     def _tip(self, atom, parent, order):
         mol = self._mol
-        el, x, y, z = mol.atoms[atom]
+        # An atom may carry a 5th slot (its colour / lattice-site tint), so
+        # take the first four rather than unpacking the whole row.
+        el, x, y, z = mol.atoms[atom][:4]
         free = model.free_valence(mol.atoms, mol.bonds, atom)
         lines = [f"<b>{elements.name(el)}</b> ({el}), atom {atom}",
                  f"Z = {elements.number(el)}, "

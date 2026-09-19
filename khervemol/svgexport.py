@@ -124,12 +124,25 @@ def specs_to_svg(specs, width, height, dpi=96):
                 el.set("fill", _hex(fill))
             else:
                 el.set("fill", "none")
+        elif shape == "polygon":
+            # KhervePaint reads <polygon> as an editable PolygonItem, so a
+            # coordination polyhedron stays a set of movable faces there.
+            el = ET.SubElement(root, _svg("polygon"))
+            el.set("points", " ".join(f"{float(px):g},{float(py):g}"
+                                      for px, py in spec.get("points", [])))
+            _stroke(el, spec)
+            fill = spec.get("fill")
+            el.set("fill", _hex(fill) if fill and str(fill).lower() != "none"
+                   else "none")
+            if "opacity" in spec:
+                el.set("fill-opacity", f"{float(spec['opacity']):g}")
         elif shape == "text":
             el = ET.SubElement(root, _svg("text"))
             el.set("x", f"{float(spec.get('x', 0)):g}")
             el.set("y", f"{float(spec.get('y', 0)):g}")
-            el.set("text-anchor", "middle")
-            el.set("dominant-baseline", "central")
+            centred = str(spec.get("anchor", "")).lower() == "center"
+            el.set("text-anchor", "middle" if centred else "start")
+            el.set("dominant-baseline", "central" if centred else "hanging")
             el.set("font-family", "Segoe UI, sans-serif")
             el.set("font-size", f"{float(spec.get('size', 14)):g}")
             el.set("font-weight", "bold")
@@ -156,6 +169,10 @@ def bounds(specs):
         elif sh in ("circle", "ellipse"):
             xs += [s["x"], s["x"] + s["w"]]
             ys += [s["y"], s["y"] + s["h"]]
+        elif sh == "polygon":
+            for px, py in s.get("points", []):
+                xs.append(px)
+                ys.append(py)
         elif sh == "text":
             xs.append(s["x"])
             ys.append(s["y"])
@@ -181,6 +198,8 @@ def normalize(specs, margin=24):
         elif sh in ("circle", "ellipse"):
             s["x"] += dx
             s["y"] += dy
+        elif sh == "polygon":
+            s["points"] = [[px + dx, py + dy] for px, py in s["points"]]
         elif sh == "text":
             s["x"] += dx
             s["y"] += dy
@@ -189,12 +208,21 @@ def normalize(specs, margin=24):
 
 
 # --------------------------------------------------------- 2D sketch → specs
-def sketch_specs(atoms, bonds, show_labels=False):
-    """Skeletal line+label specs for a 2D graph (atoms [el,x,y]), matching
-    the on-screen sketch — for SVG export of the 2D tab."""
+def sketch_specs(atoms, bonds, show_labels=False, mode="skeletal"):
+    """Line+label specs for a 2D graph (atoms [el,x,y]) in representation
+    *mode*, matching the on-screen sketch — for SVG export of the 2D tab."""
+    from . import molrepr
     gap = 13.0
     lw = 2.3
     sep = 4.5
+    dot_r = 1.6
+    if mode == "condensed":
+        if not atoms:
+            return []
+        return [{"shape": "text", "text": molrepr.hill_formula(atoms, bonds),
+                 "x": 0.0, "y": 0.0, "anchor": "center", "size": 34,
+                 "stroke": "#1a1a1a"}]
+    show_labels = show_labels or molrepr.shows_all_labels(mode)
 
     def deg(idx):
         return sum(1 for i, j, _o in bonds if idx in (i, j))
@@ -231,5 +259,13 @@ def sketch_specs(atoms, bonds, show_labels=False):
             continue
         if labeled(idx):
             specs.append({"shape": "text", "text": el, "x": x, "y": y,
-                          "size": 15, "stroke": elements.color(el)})
+                          "anchor": "center", "size": 15,
+                          "stroke": elements.color(el)})
+        if mode == "lewis":
+            for dx, dy in molrepr.dot_positions(idx, atoms, bonds,
+                                                gap + dot_r * 2.2, 2.6):
+                specs.append({"shape": "circle", "x": dx - dot_r,
+                              "y": dy - dot_r, "w": 2 * dot_r,
+                              "h": 2 * dot_r, "stroke": "none",
+                              "fill": "#1a1a1a"})
     return specs

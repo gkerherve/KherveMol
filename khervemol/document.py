@@ -3,11 +3,17 @@
 A ``.kmol`` file stores both the 3D model (atoms/bonds/edges + view) and
 the 2D sketch, so a document round-trips completely:
 
-    {"format": "khervemol", "version": 1,
+    {"format": "khervemol", "version": 2,
      "mol3d": {"name","label","az","el","bond","rscale","crystal",
-               "atoms": [[el,x,y,z]...], "bonds": [[i,j,order]...],
-               "edges": [[[x,y,z],[x,y,z],style]...] | null},
+               "atoms": [[el,x,y,z[,color]]...], "bonds": [[i,j,order]...],
+               "edges": [[[x,y,z],[x,y,z],style]...] | null,
+               "cells": [nx,ny,nz], "tilts": {"i,j,k": [rx,ry,rz]},
+               "colors": {"El@tint": "#rrggbb"}, "poly": bool},
      "sketch2d": {"atoms": [[el,x,y]...], "bonds": [[i,j,order]...]}}
+
+Version 2 added the lattice state (``cells``/``tilts``/``colors``/``poly``)
+and the optional per-atom colour slot; a version-1 file still loads, it
+simply has no lattice state to restore.
 
 Copyright (C) 2026 Gwilherm Kerherve
 
@@ -21,7 +27,7 @@ import json
 
 from . import model, render
 
-FORMAT_VERSION = 2               # 2: scene notes (reactions)
+FORMAT_VERSION = 3               # 3: scene notes (reactions); 2: lattice state
 
 
 def mol_to_dict(mol):
@@ -37,6 +43,10 @@ def mol_to_dict(mol):
         "bonds": [list(b) for b in mol.bonds],
         "edges": edges,
         "notes": [_note_to_dict(n) for n in mol.notes] if mol.notes else None,
+        "cells": list(mol.cells),
+        "tilts": {k: list(v) for k, v in mol.tilts.items()},
+        "colors": dict(mol.colors),
+        "poly": bool(mol.poly),
     }
 
 
@@ -60,7 +70,8 @@ def mol_from_dict(d):
         name=d.get("name", "custom"), label=d.get("label"),
         az=d.get("az"), el=d.get("el"), bond=d.get("bond"),
         rscale=d.get("rscale", 0.92), crystal=d.get("crystal", False),
-        edges=edges,
+        edges=edges, cells=d.get("cells"), tilts=d.get("tilts"),
+        colors=d.get("colors"), poly=d.get("poly", False),
         notes=[_note_from_dict(n) for n in d["notes"]] if d.get("notes")
         else None)
 
@@ -81,6 +92,10 @@ def load(path):
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
     mol = mol_from_dict(data.get("mol3d", {}))
+    # A stacked/tilted crystal is regenerated rather than trusted from the
+    # file, so `owners` (which cell each atom belongs to) comes back too.
+    if mol.crystal:
+        mol.rebuild()
     sk = data.get("sketch2d", {})
     return mol, sk.get("atoms", []), sk.get("bonds", [])
 

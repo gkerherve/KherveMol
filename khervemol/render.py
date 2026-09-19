@@ -15,9 +15,10 @@ the Free Software Foundation, either version 3 of the License, or
 
 from PyQt5.QtCore import QLineF, QPointF, QRectF, Qt
 from PyQt5.QtGui import (QBrush, QColor, QFont, QGradient, QImage,
-                         QLinearGradient, QPainter, QPen, QRadialGradient)
+                         QLinearGradient, QPainter, QPen, QPolygonF,
+                         QRadialGradient)
 from PyQt5.QtWidgets import (QGraphicsEllipseItem, QGraphicsLineItem,
-                             QGraphicsSimpleTextItem)
+                             QGraphicsPolygonItem, QGraphicsSimpleTextItem)
 
 #: Geometry of the "sun" highlight, in unit bounding-box coordinates.
 _SUN_CENTER = (0.35, 0.35)
@@ -86,14 +87,27 @@ def spec_to_item(spec):
         item.setPen(_pen(spec))
         item.setBrush(_brush(spec))
         return item
+    if shape == "polygon":
+        poly = QPolygonF([QPointF(float(px), float(py))
+                          for px, py in spec.get("points", [])])
+        item = QGraphicsPolygonItem(poly)
+        item.setPen(_pen(spec))
+        item.setBrush(_brush(spec))
+        if "opacity" in spec:
+            item.setOpacity(float(spec["opacity"]))
+        return item
     if shape == "text":
         item = QGraphicsSimpleTextItem(str(spec.get("text", "")))
         item.setBrush(QBrush(QColor(spec.get("stroke", "#1a1a1a"))))
-        font = QFont("Segoe UI")
-        font.setPixelSize(max(6, int(spec.get("size", 12))))
-        font.setBold(bool(spec.get("bold", False)))
+        font = QFont("Segoe UI", int(spec.get("size", 12)))
+        font.setBold(bool(spec.get("bold", True)))
         item.setFont(font)
-        item.setPos(float(spec.get("x", 0)), float(spec.get("y", 0)))
+        x, y = float(spec.get("x", 0)), float(spec.get("y", 0))
+        if str(spec.get("anchor", "")).lower() == "center":
+            box = item.boundingRect()       # (x, y) is the centre, not the
+            x -= box.width() / 2.0          # top-left corner
+            y -= box.height() / 2.0
+        item.setPos(x, y)
         return item
     return None
 

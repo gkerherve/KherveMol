@@ -260,8 +260,14 @@ def weight(element: str) -> float:
 
 
 def text_color(element: str) -> str:
-    """Readable ink colour for a chip filled with the element's colour."""
-    return "#111" if QColor(color(element)).lightnessF() > 0.5 else "#fff"
+    """Readable ink colour for a chip filled with the element's colour.
+
+    Judged on **perceived** brightness, not HSL lightness: a saturated blue
+    like nitrogen's #3050f8 is "light" by lightness but dark to the eye, so
+    lightness alone put black ink on it."""
+    c = QColor(color(element))
+    luma = (0.299 * c.red() + 0.587 * c.green() + 0.114 * c.blue()) / 255.0
+    return "#111" if luma > 0.6 else "#fff"
 
 
 def covalent_radius(element: str) -> float:

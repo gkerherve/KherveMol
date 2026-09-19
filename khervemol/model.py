@@ -42,13 +42,14 @@ def _mix(a, b, t):
     return "#%02x%02x%02x" % (r, g, bl)
 
 
-def atom_specs(cx, cy, r, element, label=False):
+def atom_specs(cx, cy, r, element, label=False, color=None):
     """A single lit-sphere spec for *element* centred at (cx, cy), radius r.
 
     The sphere is a circle filled with a `sun` gradient: a near-white
     highlight at the top-left fading to a darkened rim, so it reads as a
-    3D ball in the element's CPK colour."""
-    body = elements.color(element)
+    3D ball in the element's CPK colour. *color* overrides that body
+    colour — a custom atom colour or a lattice-site tint (`molcolor`)."""
+    body = color or elements.color(element)
     hi = _mix(body, "#ffffff", 0.62)
     rim = _mix(body, "#000000", 0.40)
     stroke = _mix(body, "#000000", 0.52)
@@ -56,9 +57,16 @@ def atom_specs(cx, cy, r, element, label=False):
             "w": 2 * r, "h": 2 * r, "stroke": stroke,
             "width": max(0.8, r * 0.10),
             "fill": {"kind": "sun", "c1": rim, "c2": hi}}
-    if label:
-        spec["label"] = element
-    return [spec]
+    if not label:
+        return [spec]
+    # The symbol goes on top of the ball, in whichever of black/white reads
+    # against the body colour.
+    luma = (0.299 * QColor(body).red() + 0.587 * QColor(body).green()
+            + 0.114 * QColor(body).blue()) / 255.0
+    ink = "#161616" if luma > 0.6 else "#ffffff"
+    return [spec, {"shape": "text", "text": element, "x": cx, "y": cy,
+                   "anchor": "center", "size": max(6, int(r * 0.85)),
+                   "stroke": ink}]
 
 
 def bond_specs(p1, p2, order=1, width=6.0, color=_BOND_COLOR):
@@ -144,7 +152,7 @@ def _spread(atoms, edges, factor, centroid=None):
     def sc(p):
         return (cx + (p[0] - cx) * factor, cy + (p[1] - cy) * factor,
                 cz + (p[2] - cz) * factor)
-    at = [(a[0], *sc((a[1], a[2], a[3]))) for a in atoms]
+    at = [(a[0], *sc((a[1], a[2], a[3])), *a[4:]) for a in atoms]
     ed = None
     if edges:
         ed = [(sc(e[0]), sc(e[1]), e[2] if len(e) > 2 else "solid")
@@ -170,17 +178,25 @@ def _spread_notes(notes, factor, centroid):
 
 def _model(atoms, bonds, w, h, edges=None, rscale=1.0, labels=False,
            margin=0.12, az=_AZ, el=_EL, bond_scale=1.0, tag_atoms=False,
-           frozen=None, notes=None):
+           frozen=None, poly=False, colors=None, notes=None):
     """Lay out a 3D model into the (w, h) box and return its shape specs.
 
-    *atoms* is a list of ``(element, x, y, z)``; *bonds* a list of
+    *atoms* is a list of ``(element, x, y, z)`` — with an optional 5th
+    slot, a per-atom colour override (`molcolor`); *bonds* a list of
     ``(i, j, order)`` index pairs; *edges* an optional list of
     ``(p1, p2)`` or ``(p1, p2, style)`` unit-cell segments where *style*
     is ``"solid"`` or ``"dash"``. *bond_scale* spreads the atoms apart to
     lengthen the bonds. The projected model is scaled uniformly (spheres
     stay round) to fit the box, then drawn back-to-front: edges, bonds,
-    spheres. Passing *frozen* (from `fit_params`) reuses a captured
-    scale/origin/centroid so dragging one atom doesn't rescale the rest."""
+    spheres. With *poly*, translucent coordination-polyhedron faces join
+    the same depth sort as the spheres, so a centre atom shows through its
+    own front faces. *colors* is an element/site colour override map for
+    regenerated structures (crystals). Passing *frozen* (from `fit_params`)
+    reuses a captured scale/origin/centroid so dragging one atom doesn't
+    rescale the rest."""
+    if colors:
+        from . import molcolor
+        atoms = molcolor.apply_colors(atoms, colors)
     fc = frozen.get("centroid") if frozen else None
     if notes and bond_scale != 1.0 and atoms:
         notes = _spread_notes(notes, bond_scale, fc or _centroid(atoms))
@@ -261,9 +277,27 @@ def _model(atoms, bonds, w, h, edges=None, rscale=1.0, labels=False,
             for stick in sticks:
                 stick["_bond"] = bi          # for builder hit-testing
         specs += sticks
-    for idx in sorted(range(len(atoms)), key=lambda k: proj[k][2]):
+    drawables = [(proj[i][2], 1, i) for i in range(len(atoms))]
+    if poly:
+        from . import molcolor
+        for face, color in molcolor.coordination_polyhedra(atoms, bonds):
+            pf = [_proj(p[0], p[1], p[2], az, el) for p in face]
+            depth = sum(q[2] for q in pf) / len(pf)
+            drawables.append((depth, 0, (pf, color)))
+    for _depth, kind, payload in sorted(drawables, key=lambda t: (t[0], t[1])):
+        if kind == 0:
+            pf, color = payload
+            specs.append({"shape": "polygon",
+                          "points": [list(T(q[0], q[1])) for q in pf],
+                          "fill": color, "opacity": 0.32,
+                          "stroke": _mix(color, "#000000", 0.35),
+                          "width": max(1.0, s * 0.02)})
+            continue
+        idx = payload
         cx, cy = T(proj[idx][0], proj[idx][1])
-        a_specs = atom_specs(cx, cy, rad[idx] * s, atoms[idx][0], label=labels)
+        atom = atoms[idx]
+        a_specs = atom_specs(cx, cy, rad[idx] * s, atom[0], label=labels,
+                             color=(atom[4] if len(atom) > 4 else None))
         if tag_atoms and a_specs:
             a_specs[0]["_atom"] = idx        # for builder hit-testing
         specs += a_specs
@@ -280,8 +314,8 @@ def note_specs(note, pts, s):
         px = max(6.0, float(note.get("size", 1.0)) * s)
         text = str(note.get("text", ""))
         x, y = pts[0]
-        return [{"shape": "text", "text": text, "x": x - 0.3 * px * len(text),
-                 "y": y - 0.62 * px, "size": px * 0.8, "stroke": color,
+        return [{"shape": "text", "text": text, "x": x, "y": y,
+                 "size": px * 0.8, "stroke": color, "anchor": "center",
                  "bold": bool(note.get("bold", True))}]
     if note.get("kind") == "arrow":
         (x1, y1), (x2, y2) = pts[0], pts[1]
@@ -350,12 +384,14 @@ def drag_atom(atoms, index, dsx, dsy, az, el, bond, scale, bonds=None):
 
 
 def specs_from_atoms(atoms, bonds, w, h, az=None, el=None, bond=1.0,
-                     rscale=0.92, tag_atoms=False, frozen=None, labels=False):
+                     rscale=0.92, tag_atoms=False, frozen=None, labels=False,
+                     poly=False, colors=None):
     """Shape specs for a custom (atoms, bonds) model."""
     return _model(atoms, bonds, w, h, rscale=rscale,
                   az=DEFAULT_AZ if az is None else az,
                   el=DEFAULT_EL if el is None else el, bond_scale=bond,
-                  tag_atoms=tag_atoms, frozen=frozen, labels=labels)
+                  tag_atoms=tag_atoms, frozen=frozen, labels=labels,
+                  poly=poly, colors=colors)
 
 
 # ------------------------------------------------------- generic 3D vectors
@@ -752,13 +788,26 @@ def reattach(atoms, bonds, atom, old_bond, anchor, order=1):
 class Molecule:
     """An editable structure plus its current 3D view.
 
-    ``atoms`` is a list of ``[element, x, y, z]`` and ``bonds`` a list of
-    ``[i, j, order]``. ``name`` is the library key it came from (or a free
-    label); ``crystal`` marks fixed-lattice models (not atom-editable)."""
+    ``atoms`` is a list of ``[element, x, y, z]`` — with an optional 5th
+    slot, a per-atom colour — and ``bonds`` a list of ``[i, j, order]``.
+    ``name`` is the library key it came from (or a free label); ``crystal``
+    marks fixed-lattice models (not atom-editable).
+
+    A crystal carries its own **lattice state**: ``cells`` is the
+    ``(nx, ny, nz)`` supercell it is tiled into, ``tilts`` maps a
+    ``"i,j,k"`` cell key to its ``(rx, ry, rz)`` tilt in degrees,
+    ``colors`` overrides the colour of an element/site (a crystal is
+    regenerated from its builder, so its colours can't ride on the atoms)
+    and ``poly`` draws coordination polyhedra. `rebuild` regenerates the
+    atoms for the current lattice state and fills two membership tables:
+    ``owners`` gives each atom one home cell (how clicking an atom picks a
+    cell) and ``members`` gives each cell all of its atoms, shared corners
+    included (how a whole cell is highlighted)."""
 
     def __init__(self, atoms=None, bonds=None, name="custom", label=None,
                  az=None, el=None, bond=None, rscale=0.92, crystal=False,
-                 edges=None, notes=None):
+                 edges=None, cells=None, tilts=None, colors=None, poly=False,
+                 notes=None):
         self.atoms = [list(a) for a in (atoms or [])]
         self.bonds = [list(b) for b in (bonds or [])]
         self.edges = list(edges) if edges else None
@@ -774,17 +823,88 @@ class Molecule:
         self.bond = 1.6 if bond is None else bond
         self.rscale = rscale
         self.crystal = crystal
+        self.cells = tuple(cells) if cells else (1, 1, 1)
+        self.tilts = dict(tilts or {})
+        self.colors = dict(colors or {})
+        self.poly = bool(poly)
+        self.owners = ["0,0,0"] * len(self.atoms)
+        self.members = {"0,0,0": list(range(len(self.atoms)))}
 
     def clone(self):
         return Molecule(self.atoms, self.bonds, self.name, self.label,
                         self.az, self.el, self.bond, self.rscale,
-                        self.crystal, self.edges, self.notes)
+                        self.crystal, self.edges, self.cells, self.tilts,
+                        self.colors, self.poly, self.notes)
+
+    # ------------------------------------------------------ lattice state
+    @property
+    def can_stack(self):
+        """Whether this crystal tiles into a supercell."""
+        from . import library
+        return self.crystal and library.can_stack(self.name)
+
+    @property
+    def stacked(self):
+        return self.cells != (1, 1, 1)
+
+    def rebuild(self):
+        """Regenerate a crystal's atoms/bonds/edges for the current
+        ``cells``/``tilts``, refreshing ``owners``. A no-op for an editable
+        molecule, whose atoms are the document."""
+        from . import library
+        if not self.crystal or self.name not in library.LABELS:
+            return
+        owners, members = [], {}
+        atoms, bonds, edges, rscale = library.model_data(
+            self.name, self.cells if self.stacked else None,
+            tilts=self.tilts, owners=owners, members=members)
+        self.atoms = [list(a) for a in atoms]
+        self.bonds = [list(b) for b in bonds]
+        self.edges = list(edges) if edges else None
+        self.rscale = rscale
+        self.owners = owners
+        self.members = members
+
+    def cell_of(self, index):
+        """The ``"i,j,k"`` cell atom *index* belongs to.
+
+        A corner shared between cells belongs to all of them; this names
+        the first, which is the one a tilt would rotate."""
+        if index is not None and 0 <= index < len(self.owners):
+            return self.owners[index]
+        return "0,0,0"
+
+    def cell_members(self, key):
+        """Every atom index in cell *key* — the shared corners included, so
+        this is the whole cell as drawn, not just the atoms it created."""
+        return list(self.members.get(key, ()))
+
+    def prune_tilts(self):
+        """Drop tilts that now point outside the supercell."""
+        from . import supercell
+        self.tilts = {k: v for k, v in self.tilts.items()
+                      if supercell.in_range(k, self.cells)}
+
+    def _frozen_fit(self, w, h):
+        """A supercell's layout is anchored to its **untilted** geometry:
+        the fit would otherwise chase a tilted cell's protruding corners
+        and rescale every other cell with it, so tilting one cell would
+        shift the whole crystal."""
+        if not (self.stacked and self.tilts):
+            return None
+        from . import library
+        base = library.model_data(self.name, self.cells)[0]
+        return fit_params(base, [], w, h, self.az, self.el, self.bond,
+                          self.rscale)
 
     def specs(self, w, h, tag_atoms=False, frozen=None, labels=False):
+        if frozen is None:
+            frozen = self._frozen_fit(w, h)
         return _model(self.atoms, self.bonds, w, h, edges=self.edges,
                       rscale=self.rscale, az=self.az, el=self.el,
                       bond_scale=self.bond, tag_atoms=tag_atoms,
-                      frozen=frozen, labels=labels, notes=self.notes)
+                      frozen=frozen, labels=labels, poly=self.poly,
+                      colors=self.colors, notes=self.notes)
 
     def formula(self):
         """Hill-system molecular formula string (C first, H second, rest

@@ -11,15 +11,17 @@ the Free Software Foundation, either version 3 of the License, or
 import os
 
 from PyQt5.QtCore import QMimeData, QSettings, Qt
-from PyQt5.QtWidgets import (QAction, QActionGroup, QApplication, QDockWidget,
-                             QFileDialog, QInputDialog, QMainWindow, QMenu,
-                             QMessageBox, QScrollArea, QTabWidget, QTreeWidget,
-                             QTreeWidgetItem)
+from PyQt5.QtWidgets import (QAction, QActionGroup, QApplication, QDialog,
+                             QDialogButtonBox, QDockWidget, QFileDialog,
+                             QHBoxLayout, QInputDialog, QLabel, QMainWindow,
+                             QMenu, QMessageBox, QScrollArea, QSpinBox,
+                             QTabWidget, QTreeWidget, QTreeWidgetItem,
+                             QVBoxLayout)
 
 from . import (__version__, builders_ui, crystal_library, dnd, document,
-               elements, entries,
-               help as help_mod, icons, library, model, periodic, rdkit_io,
-               reactions, style, svgexport)
+               elements, entries, help as help_mod, icons, library, model,
+               molrepr, periodic, rdkit_io, reactions, style, supercell,
+               svgexport)
 from .ai_assistant import AiDock
 from .crystal import BuildError
 from .editor2d import Editor2D
@@ -236,14 +238,26 @@ class MainWindow(QMainWindow):
                         lambda _=False, k=c.key, n=c.name:
                         self.load_entry("crystal", k, n))
                     sub.addAction(act)
-        sub = m_xtal.addMenu("Classic crystal models")
-        for _title, keys in library.CATEGORIES:
-            if _title != "Crystal structures":
+        classic = m_xtal.addMenu("Classic crystal models")
+        for title, keys in library.CATEGORIES:
+            if title not in ("Crystal structures", "Lattice systems"):
                 continue
+            sub = classic.addMenu(title)
             for key in keys:
                 act = QAction(library.label(key), self)
                 act.triggered.connect(lambda _=False, k=key: self.load_model(k))
                 sub.addAction(act)
+        m_xtal.addSeparator()
+        self._act(m_xtal, "Stack unit cells…", self.stack_cells, "Ctrl+U")
+        self._xtal_poly = self._act(m_xtal, "Coordination polyhedra",
+                                    self.viewer.poly_btn.toggle)
+        self._xtal_poly.setCheckable(True)
+        self._xtal_legend = self._act(m_xtal, "Colour legend",
+                                      self.viewer.legend_btn.toggle)
+        self._xtal_legend.setCheckable(True)
+        self._act(m_xtal, "Reset cell tilts", self.viewer.reset_tilts)
+        self._act(m_xtal, "Reset colours", self.viewer.reset_colors)
+        m_xtal.aboutToShow.connect(self._sync_crystal_menu)
 
         m_rx = mb.addMenu("&Reaction")
         self._act(m_rx, "Reaction builder…", self.open_reaction_builder,
@@ -264,6 +278,17 @@ class MainWindow(QMainWindow):
         self._act(m_struct, "Build 3D from 2D sketch", self.build_3d_from_sketch,
                   "Ctrl+B")
         self._act(m_struct, "Clear 2D sketch", self.sketch.clear)
+        m_struct.addSeparator()
+        repr_menu = m_struct.addMenu("2D representation")
+        repr_group = QActionGroup(self)
+        for key in molrepr.MODES:
+            act = QAction(molrepr.MODE_LABELS[key], self)
+            act.setCheckable(True)
+            act.setChecked(key == "skeletal")
+            act.triggered.connect(
+                lambda _=False, k=key: self.sketch.set_mode(k))
+            repr_group.addAction(act)
+            repr_menu.addAction(act)
 
         m_view = mb.addMenu("&View")
         theme_menu = m_view.addMenu("Theme")
@@ -629,6 +654,51 @@ class MainWindow(QMainWindow):
         except Exception as exc:                    # noqa: BLE001
             QMessageBox.warning(self, "Import failed", str(exc))
 
+    # ------------------------------------------------------------- crystal
+    def _sync_crystal_menu(self):
+        """Keep the Crystal menu's checkmarks and enabled state in step with
+        the loaded structure."""
+        v = self.viewer
+        self._xtal_poly.setChecked(v.poly_btn.isChecked())
+        self._xtal_poly.setEnabled(v.poly_btn.isEnabled())
+        self._xtal_legend.setChecked(v.legend_btn.isChecked())
+
+    def stack_cells(self):
+        """Ask for an nx × ny × nz supercell and tile the crystal into it."""
+        v = self.viewer
+        if not v.mol.can_stack:
+            QMessageBox.information(
+                self, "Stack unit cells",
+                "Load a stackable crystal first — the cubic family and the "
+                "six non-cubic lattice systems tile into a supercell.\n\n"
+                "(The HCP model is already drawn as a full hexagonal prism, "
+                "so it doesn't repeat on its own cell.)")
+            return
+        dlg = QDialog(self)
+        dlg.setWindowTitle(f"Stack {v.mol.label}")
+        root = QVBoxLayout(dlg)
+        root.addWidget(QLabel("Repeat the unit cell along each lattice "
+                              "vector. Shared corner and face atoms are "
+                              "drawn once."))
+        row = QHBoxLayout()
+        spins = []
+        for axis, n in zip("abc", v.mol.cells):
+            row.addWidget(QLabel(f"{axis}:"))
+            sp = QSpinBox()
+            sp.setRange(1, supercell.MAX_CELLS)
+            sp.setValue(n)
+            spins.append(sp)
+            row.addWidget(sp)
+        row.addStretch(1)
+        root.addLayout(row)
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok
+                                   | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(dlg.accept)
+        buttons.rejected.connect(dlg.reject)
+        root.addWidget(buttons)
+        if dlg.exec_() == QDialog.Accepted:
+            v.set_cells(*(sp.value() for sp in spins))
+
     def show_properties(self):
         from .properties import PropertiesDialog
         PropertiesDialog(self.viewer.mol, self).exec_()
@@ -717,6 +787,8 @@ class MainWindow(QMainWindow):
                 title, lambda _=False, a=az, e=el: self.viewer._set_view(a, e))
         m.addAction("Reset zoom", self.viewer.view.reset_zoom)
         m.addAction("Toggle labels", self.viewer.labels_btn.toggle)
+        if not self.viewer.editable:
+            self._crystal_section(m, kind, index)
         if self.viewer.editable:
             lock = m.addAction("Lock bond lengths", self.viewer.lock_btn.toggle)
             lock.setCheckable(True)
@@ -739,6 +811,40 @@ class MainWindow(QMainWindow):
         m.addAction("Export SVG (KhervePaint)…", self.export_svg)
         m.exec_(gpos)
 
+    def _crystal_section(self, m, kind, index):
+        """The lattice actions on a crystal's right-click menu: stacking,
+        the tilt of the clicked atom's cell, colours and polyhedra."""
+        v = self.viewer
+        if v.mol.can_stack:
+            m.addAction("Stack unit cells…", self.stack_cells)
+        if kind == "atom" and index is not None and index < len(v.mol.atoms):
+            v.select_atom(index)
+            atom = v.mol.atoms[index]
+            m.addSeparator()
+            head = m.addAction(f"{atom[0]} ({elements.name(atom[0])})")
+            head.setEnabled(False)
+            m.addAction("Atom colour…", v.pick_color)
+            if v.mol.stacked:
+                cell = v.mol.cell_of(index)
+                sub = m.addMenu(f"Tilt cell ({cell.replace(',', ', ')})")
+                for label, angles in (("15° about x", (15, 0, 0)),
+                                      ("15° about y", (0, 15, 0)),
+                                      ("15° about z", (0, 0, 15)),
+                                      ("Straighten", (0, 0, 0))):
+                    sub.addAction(label, lambda _=False, c=cell, a=angles:
+                                  v.set_tilt(c, a))
+        m.addSeparator()
+        poly = m.addAction("Coordination polyhedra", v.poly_btn.toggle)
+        poly.setCheckable(True)
+        poly.setChecked(v.poly_btn.isChecked())
+        poly.setEnabled(v.poly_btn.isEnabled())
+        legend = m.addAction("Colour legend", v.legend_btn.toggle)
+        legend.setCheckable(True)
+        legend.setChecked(v.legend_btn.isChecked())
+        m.addAction("Reset colours", v.reset_colors)
+        if v.mol.tilts:
+            m.addAction("Reset cell tilts", v.reset_tilts)
+
     def _sketch_menu(self, gpos):
         m = QMenu(self)
         m.addAction("Build 3D from this sketch", self.build_3d_from_sketch)
@@ -751,6 +857,13 @@ class MainWindow(QMainWindow):
                 label, lambda _=False, k=key: self.sketch.set_tool(k))
             act.setCheckable(True)
             act.setChecked(self.sketch.tool == key)
+        shown = m.addMenu("Show as")
+        for key in molrepr.MODES:
+            act = shown.addAction(
+                molrepr.MODE_LABELS[key],
+                lambda _=False, k=key: self.sketch.set_mode(k))
+            act.setCheckable(True)
+            act.setChecked(self.sketch.mode == key)
         m.addAction("Toggle all labels", self.sketch.labels_btn.toggle)
         m.addAction("Clear sketch", self.sketch.clear)
         m.addSeparator()
@@ -851,7 +964,8 @@ class MainWindow(QMainWindow):
         else:
             specs = svgexport.sketch_specs(self.sketch.atoms,
                                            self.sketch.bonds,
-                                           self.sketch.show_labels)
+                                           self.sketch.show_labels,
+                                           self.sketch.mode)
         specs, w, h = svgexport.normalize(specs)
         svgexport.save_specs(path, specs, w, h)
         self.statusBar().showMessage(

@@ -56,8 +56,69 @@ matching 3D model. Both views also have **right-click menus**.
 - **Delete** — select an atom and press **Delete** (or the button).
 - **Labels** — toggle element symbols on the spheres.
 
-Crystals are fixed lattices: rotatable and zoomable, but not
-atom-editable.
+- **Atom colour…** — select an atom and recolour it. On a molecule the
+  colour rides on that one atom; on a crystal it recolours every atom of
+  the same element **and lattice site** (a lattice is rebuilt on every
+  draw, so its colours are stored as a rule, not on the atoms).
+- **Legend** — a colour key beside the structure, one lit sphere per
+  element and site. It is part of the PNG and SVG export.
+- **Polyhedra** — translucent coordination polyhedra: for every atom with
+  four or more bonded neighbours, the faces those neighbours span. This is
+  the VESTA-style view — perovskite's TiO₆ octahedra, diamond's tetrahedra.
+  The button is greyed out when nothing is ≥4-coordinate.
+
+Crystals are fixed lattices: rotatable, zoomable, recolourable and
+stackable, but not atom-editable.
+
+## Crystals & unit cells
+
+The **Crystal** menu holds two families:
+
+- **Crystal structures** — the cubic family and its relatives: simple
+  cubic, BCC, FCC, HCP, diamond, NaCl, CsCl, zinc blende, fluorite and
+  perovskite, drawn as wireframe unit cells.
+- **Lattice systems** — the six non-cubic systems (tetragonal,
+  orthorhombic, hexagonal, rhombohedral, monoclinic, triclinic), built
+  from their lattice parameters *a, b, c, α, β, γ*. The status line shows
+  those parameters.
+
+A body- or face-centre atom of the same element as the corners would be
+invisible against them, so those **hidden sites are tinted** — blue for a
+body centre, salmon for a face centre, violet for an interior tetrahedral
+site, green for HCP's middle layer. The legend names them.
+
+### Stacking
+
+**Crystal ▸ Stack unit cells…** (Ctrl+U), or the **Supercell** boxes under
+the 3D view, repeat the cell up to 12 times along each lattice vector.
+Cells stack along their *own* vectors, so a hexagonal or monoclinic
+supercell leans the way the crystal really does rather than sitting on a
+square grid. Atoms, bonds and cell edges shared between neighbouring cells
+are drawn once, so corners don't pile up.
+
+Every atom knows which cell it belongs to — click one and the status line
+names its cell.
+
+### Tilting a cell
+
+The **Tilt cell** boxes rotate the unit cell of the selected atom about
+x, y and z. A tilt is a **defect, not a detached grain**: the tilted cell
+shares its corner and face atoms with its neighbours, so those neighbours
+deform to follow it and the lattice stays connected. Nothing is
+duplicated, and a cell no tilted neighbour touches does not move at all.
+
+Click an atom of the cell you want to tilt first. The rest of that cell is
+then **outlined in orange**, so you can see which cell the boxes will
+rotate before you turn them — a corner is shared between neighbouring
+cells, and the outline says which of them counts as yours. The boxes show
+that cell's current tilt.
+
+Your selected atom **stays selected** as you turn the boxes: a tilt moves
+atoms but never renumbers them, so the green ring stays on the atom you
+picked and each further turn keeps rotating the same cell. **Reset tilts**
+straightens everything.
+
+Right-clicking a crystal offers the same actions on the cell you clicked.
 
 ## 2D Sketch
 
@@ -68,6 +129,20 @@ atom-editable.
 - **Move** — drag an atom to move its **whole molecule**.
 - **Atom** — click an atom to re-label it to the active element.
 - **Erase** — click an atom (removes it and its bonds) or a bond.
+- **Show as** — how the same graph is drawn:
+  - **Skeletal** (default) — bond lines, carbons as implicit vertices,
+    heteroatoms lettered, hydrogens implied.
+  - **Structural formula** — every atom lettered, hydrogens included.
+  - **Lewis structure** — the structural drawing plus lone-pair dots,
+    placed on the sides of each atom that no bond is using.
+  - **Condensed formula** — the molecular formula alone.
+
+  Lewis and condensed are *views*: the drawing tools switch off there, so
+  a click can't move an atom you can no longer see. Switch back to
+  Skeletal or Structural to keep editing. SVG export follows the mode.
+
+The formula in the status bar counts the hydrogens a skeletal drawing
+leaves implicit, so a C–C–O sketch reads C₂H₆O rather than C₂O.
 - **All labels** shows every atom's symbol (including carbons); **Clear**
   empties the sketch.
 
@@ -98,7 +173,8 @@ assembled into a 3D model.
   shapes, hydrocarbons, aromatics, biomolecules, medicines…),
   **Crystals** (120+), **Surfaces** (60 ready faces), **Graphene,
   nanotubes & fullerenes**, **Reactions** (36 classics) and the original
-  **Classic 3D models**. Everything builds without RDKit — a built-in
+  **Classic 3D models** (including the six non-cubic lattice
+  systems with their supercell, tilt and colour tools). Everything builds without RDKit — a built-in
   SMILES parser and 3D embedder does the work (RDKit takes over when it is
   installed, for force-field-cleaned geometry). The **Explorer** (Ctrl+L)
   is the same list with search and a preview.
@@ -218,8 +294,13 @@ renderer.
 properties. Formula, molecular weight and atom counts always work. With
 RDKit installed it adds exact mass, LogP, TPSA, H-bond donors/acceptors,
 rotatable bonds, ring counts, canonical SMILES, and InChI / InChIKey.
-Crystals are shown as a unit-cell composition (molecular descriptors don't
-apply to a periodic lattice).
+A crystal reports its lattice instead: the lattice parameters, the
+supercell and how many unit cells it holds, which cells are tilted, and
+the coordination number of each element. Its mass row is labelled **Mass
+drawn**, because the number is the mass of the atoms on screen, not a
+molar mass — and a stacked cell says so outright, since atoms shared
+between cells are counted once and the formula is therefore not the
+stoichiometric unit.
 
 ## AI Chat
 
