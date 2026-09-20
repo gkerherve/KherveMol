@@ -58,6 +58,9 @@ def test_film_keyframes_and_bond_switch():
             a.prod.spread[a.pi[i]])
     assert a.bonds_at(0.1) == [list(b) for b in a.rbonds]
     assert a.bonds_at(0.9) == [list(b) for b in a.pbonds]
+    # between BREAK and FORM only the bonds both sides share remain: H2 + Cl2
+    # -> 2 HCl shares none, so no bond is drawn while the atoms rearrange
+    assert a.bonds_at(0.5) == []
     # reactants start left of the products' final place
     xr = sum(a.position(i, 0.0)[0] for i in range(n)) / n
     xp = sum(a.position(i, 1.0)[0] for i in range(n)) / n
@@ -70,7 +73,7 @@ def test_apply_and_restore_the_static_scene():
     static_notes = len(m.notes)
     a.apply(m, 0.5)
     assert len(m.atoms) == 6                 # reactant atoms only
-    assert any(n.get("text") == "Bonds break and form" for n in m.notes)
+    assert any(n.get("text") == "Atoms rearrange" for n in m.notes)
     a.restore(m)
     assert m.atoms == static_atoms and len(m.notes) == static_notes
 
@@ -124,3 +127,23 @@ def test_run_to_the_end_stops_unless_looping(qapp):
     v._anim_tick()
     assert v.playing and v._anim_p == 0.0
     v.pause()
+
+
+def test_broken_bonds_vanish_before_new_ones_form():
+    _m, a = _film("ethene + H2 -> ethane")
+    mid = a.bonds_at(0.5)
+    common = {frozenset(b[:2]) for b in a.rbonds} & \
+        {frozenset(b[:2]) for b in a.pbonds}
+    assert {frozenset(b[:2]) for b in mid} == common
+    assert 0 < len(mid) < len(a.rbonds) + 1
+
+
+def test_loading_a_reaction_plays_it_once(qapp):
+    from khervemol.mainwindow import MainWindow
+    w = MainWindow()
+    w.load_entry("reaction", "H2 + Cl2 -> HCl")
+    w.viewer.play(True)                      # what the delayed call does
+    assert w.viewer.playing
+    w.viewer._anim_p = 0.9999
+    w.viewer._anim_tick()
+    assert not w.viewer.playing and not w.viewer.animating   # back to equation

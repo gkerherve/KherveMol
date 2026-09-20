@@ -667,9 +667,12 @@ class Viewer3D(QWidget):
         self.status.setText(f"{self.mol.anim.title} — "
                             f"{self.mol.anim.stage(self._anim_p)}")
 
-    def play(self):
+    def play(self, restore_at_end=False):
+        """Start the film from the beginning (or resume). With
+        *restore_at_end* the equation scene comes back when it finishes."""
         if not self.has_animation:
             return
+        self._restore_at_end = bool(restore_at_end)
         if self._anim_p is None or self._anim_p >= 1.0:
             self.set_progress(0.0)
         self._anim_timer.start()
@@ -703,6 +706,8 @@ class Viewer3D(QWidget):
             else:
                 self.set_progress(1.0)
                 self.pause()
+                if getattr(self, "_restore_at_end", False):
+                    self.stop_animation()
                 return
         self.set_progress(p)
 

@@ -434,11 +434,11 @@ def _animation(rx, drawn):
     cp = _side(right, 1.2, 0.0)
     if sorted(cr[0]) != sorted(cp[0]):
         return None
-    sr = _side(left, 2.6, 0.0)
-    sp = _side(right, 2.6, 0.0)
-    x0 = max(sr[4], sp[4]) / 2 + max(cr[4], cp[4]) / 2 + 1.0
-    ar = _side(left, 2.6, -x0)
-    dp = _side(right, 2.6, x0)
+    sr = _side(left, 1.8, 0.0)
+    sp = _side(right, 1.8, 0.0)
+    x0 = max(sr[4], sp[4]) / 2 + max(cr[4], cp[4]) / 2 + 0.5
+    ar = _side(left, 1.8, -x0)
+    dp = _side(right, 1.8, x0)
     reac = rxanim.Side(cr[0], cr[1], cr[2], ar[3], cr[3])
     prod = rxanim.Side(cp[0], cp[1], cp[2], dp[3], cp[3])
     return rxanim.build(reac, prod, rx.equation)

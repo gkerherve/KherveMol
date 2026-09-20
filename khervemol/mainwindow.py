@@ -10,7 +10,7 @@ the Free Software Foundation, either version 3 of the License, or
 
 import os
 
-from PyQt5.QtCore import QMimeData, QSettings, Qt
+from PyQt5.QtCore import QMimeData, QSettings, Qt, QTimer
 from PyQt5.QtWidgets import (QAction, QActionGroup, QApplication, QDialog,
                              QDialogButtonBox, QDockWidget, QFileDialog,
                              QHBoxLayout, QInputDialog, QLabel, QMainWindow,
@@ -445,6 +445,11 @@ class MainWindow(QMainWindow):
         self._retitle()
         note = f" ({mol.formula()})" if mol.formula() and not mol.notes else ""
         self.statusBar().showMessage(f"Loaded {label or mol.label}{note}")
+        if kind == "reaction" and self.viewer.has_animation \
+                and self.tabs.currentIndex() == 0:
+            # show what the equation means: play the film once, then come
+            # back to the equation (Animate replays it)
+            QTimer.singleShot(250, lambda: self.viewer.play(True))
         return True
 
     def _sync_sketch(self, force=False):

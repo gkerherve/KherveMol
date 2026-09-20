@@ -312,10 +312,11 @@ formulas (`H2O`, `ethanol`, `NH4+`, `SO4^2-`), an element (`Fe`, `Na+`) or
   drawing that many copies, with plus signs, the arrow (double for ⇌) and the
   formula under each species. Rotate and zoom as usual; the scene is
   read-only.
-- **Animate** (the row under the 3D view) plays the reaction as a film:
-  the reactants approach and pack together, their atoms travel to the
-  product positions while the reactant bonds break and the product bonds
-  form (half-way through the middle phase), and the products separate.
+- **Animate** (toolbar, or the row under the 3D view) plays the reaction as a
+  film — it also plays once by itself when you open a reaction, then returns to
+  the equation. The reactants approach and pack together, the reactant bonds
+  break (labelled *Bonds break*), the atoms swing to their product places
+  (*Atoms rearrange*), the new bonds form, and the products separate.
   KherveMol decides which atom becomes which by keeping as many bonds as
   possible, then keeping neighbours together, then the shortest trips — so an
   ethene + H₂ → ethane film keeps the C–C and four C–H bonds and only moves

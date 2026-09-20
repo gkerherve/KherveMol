@@ -15,8 +15,8 @@ atoms that have to travel the least.
   mapped product position,
 * **D** — the product molecules spread out on the right.
 
-Progress 0..1 runs A → B (approach), B → C (atoms move, bonds break at
-the half-way point and the product bonds form), C → D (separate). The
+Progress 0..1 runs A → B (approach), B → C (the reactant bonds break, the
+atoms swing to their product places, the new bonds form), C → D (separate). The
 atoms and bond list are the reactant scene's own, so a viewer only has to
 call `Animation.apply(mol, p)` and redraw.
 
@@ -35,7 +35,14 @@ TRAVEL = 0.01
 #: reward for neighbours that end up in the same product molecule
 COMPANY = 0.3
 #: where the phases end (approach, transformation, separation)
-PHASES = (0.28, 0.72)
+PHASES = (0.25, 0.75)
+#: bonds that only exist in the reactants vanish before this progress and
+#: bonds that only exist in the products appear after the second, so the
+#: film has a beat with neither — the atoms are between molecules
+BREAK, FORM = 0.42, 0.58
+#: how far (Å) atoms bound for different product molecules swing apart in
+#: height while they travel, so their paths do not all cross in one line
+ARC = 1.3
 #: seconds a full run takes at speed 1
 DURATION = 7.0
 
@@ -157,8 +164,12 @@ class Animation:
     def stage(self, p):
         if p < PHASES[0]:
             return "Reactants approach"
+        if p < BREAK:
+            return "Bonds break"
+        if p < FORM:
+            return "Atoms rearrange"
         if p < PHASES[1]:
-            return "Bonds break and form"
+            return "New bonds form"
         return "Products separate"
 
     def position(self, i, p):
@@ -170,12 +181,21 @@ class Animation:
         if p <= t1:
             return _mix(a, b, _smooth(p / t1))
         if p <= t2:
-            return _mix(b, c, _smooth((p - t1) / (t2 - t1)))
+            s = (p - t1) / (t2 - t1)
+            x, y, z = _mix(b, c, _smooth(s))
+            side = 1.0 if self.prod.mols[pj] % 2 else -1.0
+            return (x, y, z + side * ARC * math.sin(math.pi * s))
         return _mix(c, d, _smooth((p - t2) / (1.0 - t2)))
 
     def bonds_at(self, p):
-        src = self.rbonds if p < 0.5 else self.pbonds
-        return [list(b) for b in src]
+        """Bonds that survive stay; the reactants' others break before
+        BREAK, the products' new ones form after FORM."""
+        if p < BREAK:
+            return [list(b) for b in self.rbonds]
+        if p >= FORM:
+            return [list(b) for b in self.pbonds]
+        keep = {frozenset(b[:2]) for b in self.pbonds}
+        return [list(b) for b in self.rbonds if frozenset(b[:2]) in keep]
 
     def notes_at(self, p):
         """The title, the stage caption and three empty anchors that keep

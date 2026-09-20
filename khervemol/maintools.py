@@ -25,7 +25,7 @@ from . import elements, icons
 def _toolbar(win, title):
     tb = QToolBar(title, win)
     tb.setMovable(False)
-    tb.setIconSize(QSize(22, 22))
+    tb.setIconSize(QSize(16, 16))
     tb.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
     win.addToolBar(tb)
     return tb
