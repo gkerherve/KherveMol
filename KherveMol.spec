@@ -12,12 +12,26 @@
 #
 # Copyright (C) 2026 Gwilherm Kerherve. GPL-3.0.
 
+import subprocess
+import sys
 from pathlib import Path
 
 from PyInstaller.utils.hooks import collect_all, collect_submodules
 
 ROOT = Path(SPECPATH)
-ICON_PATH = ROOT / "packaging" / "khervemol.ico"
+IS_MAC = sys.platform == "darwin"
+
+# Windows takes the committed .ico; macOS needs an .icns, built on demand
+# from the committed 1024px PNG so no binary only one platform reads sits
+# in the tree (packaging/make_icns.py).
+if IS_MAC:
+    ICON_PATH = ROOT / "build" / "KherveMol.icns"
+    if not ICON_PATH.is_file():
+        subprocess.run([sys.executable,
+                        str(ROOT / "packaging" / "make_icns.py"),
+                        str(ICON_PATH)], check=True)
+else:
+    ICON_PATH = ROOT / "packaging" / "khervemol.ico"
 
 datas = []
 binaries = []
@@ -99,3 +113,34 @@ coll = COLLECT(
     upx_exclude=[],
     name="KherveMol",
 )
+
+# --------------------------------------------------------- macOS bundle
+
+if IS_MAC:
+    # CFBundleShortVersionString has to be dot-separated digits; the
+    # git-derived string carries a "+sha" suffix Finder rejects.
+    _short_version = "0.1.0"
+    if _version_file.is_file():
+        _short_version = (_version_file.read_text(encoding="utf-8")
+                          .strip().split("+")[0] or _short_version)
+
+    app = BUNDLE(
+        coll,
+        name="KherveMol.app",
+        icon=str(ICON_PATH),
+        bundle_identifier="com.kerherve.khervemol",
+        version=_short_version,
+        info_plist={
+            "CFBundleName": "KherveMol",
+            "CFBundleDisplayName": "KherveMol",
+            "CFBundleShortVersionString": _short_version,
+            "CFBundleVersion": _short_version,
+            "LSMinimumSystemVersion": "11.0",
+            # Without this the 2D sketcher and the OpenGL viewer draw at 1x
+            # and get scaled up, so every line reads soft on a Retina display.
+            "NSHighResolutionCapable": True,
+            "NSRequiresAquaSystemAppearance": False,
+            "NSHumanReadableCopyright":
+                "Copyright (C) 2026 Gwilherm Kerherve. GPL-3.0.",
+        },
+    )

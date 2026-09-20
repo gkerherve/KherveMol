@@ -1,0 +1,101 @@
+name: macOS build
+
+# PyInstaller cannot cross-compile, so the .app has to be produced on a
+# Mac. Both architectures are built: macos-14 is Apple Silicon (arm64),
+# macos-15-intel the x86_64 image. KherveMol is PyQt5 + RDKit with no
+# bundled engine, so both get a native DMG rather than making Intel users
+# run Rosetta.
+#
+# Not macos-13: that image was retired in December 2025 and the label no
+# longer resolves, so a job asking for it queues for ever rather than
+# failing. macos-15-intel is GitHub's last x86_64 image and goes away in
+# August 2027, after which this matrix is arm64 only.
+#
+# This workflow only BUILDS. It uploads the DMGs as workflow artifacts and
+# never creates a release: publishing is a deliberate step done by hand from
+# those artifacts (`gh release create macos-v<ver> --latest=false ...`).
+#
+# Development happens on `dev`, not on the default branch, and GitHub only
+# lists workflow_dispatch workflows that exist on the default branch — so
+# the trigger is a tag push, which runs the workflow file of the tagged
+# commit wherever it lives:
+#
+#   git tag macos-v0.1.N && git push origin macos-v0.1.N
+
+on:
+  push:
+    tags:
+      - "macos-v*"
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false     # an Intel failure should not hide a good arm64 build
+      matrix:
+        include:
+          - runner: macos-14
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x86_64
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The version is `git rev-list --count HEAD`, so a shallow
+          # clone would silently ship the wrong build number.
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dependencies
+        # RDKit is required here, not optional: KherveMol.spec skips it
+        # silently when it is missing, and the app would then ship without
+        # SMILES and .mol/.sdf/.pdb import.
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller pytest
+          python -c "import rdkit, PyQt5, qtawesome; print('rdkit', rdkit.__version__)"
+
+      - name: Run the test suite
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest tests/ -q
+
+      - name: Build the .app and the DMG
+        run: python packaging/build_macos.py
+
+      - name: Read the version back
+        # Read from the file the build stamped, not from git again, so the
+        # artifact name cannot disagree with the app's own About box.
+        run: echo "VERSION=$(cut -d+ -f1 khervemol/VERSION)" >> "$GITHUB_ENV"
+
+      - name: Check the bundle
+        # Not a launch test -- a GUI app on a headless runner would hang.
+        # These are the things that can actually be wrong in a finished
+        # bundle: no Info.plist, a broken signature, a version that fell
+        # back to the 0.1.0 placeholder, RDKit missing from the bundle, or a
+        # binary built for the other architecture, which users meet as
+        # "the app is damaged".
+        run: |
+          set -euo pipefail
+          APP=dist/KherveMol.app
+          test -x "$APP/Contents/MacOS/KherveMol"
+          plutil -p "$APP/Contents/Info.plist" \
+            | grep -E 'CFBundleIdentifier|CFBundleShortVersionString'
+          test "$VERSION" != "0.1.0"
+          codesign --verify --deep --strict "$APP"
+          file -b "$APP/Contents/MacOS/KherveMol" | grep -q '${{ matrix.arch }}'
+          find "$APP" -maxdepth 6 -iname 'rdkit*' | grep -q .
+
+      - name: Upload the DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: KherveMol-${{ env.VERSION }}-macOS-${{ matrix.arch }}
+          path: dist/KherveMol-*-macOS-${{ matrix.arch }}.dmg
+          if-no-files-found: error
