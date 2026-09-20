@@ -76,6 +76,7 @@ class MainWindow(QMainWindow):
         self.sketch.context_requested.connect(self._sketch_menu)
         self.sketch.molecule_dropped.connect(self._on_drop_molecule)
         self.viewer.compound_dropped.connect(self._on_drop_compound_3d)
+        self.viewer.periodic_requested.connect(self.show_periodic_table)
 
         self._build_dock()
         self._build_ai_dock()

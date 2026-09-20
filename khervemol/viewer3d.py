@@ -253,6 +253,7 @@ class Viewer3D(QWidget):
     selection_changed = pyqtSignal()        # the selected atom(s) changed
     molecule_changed = pyqtSignal()         # a different structure was loaded
     compound_dropped = pyqtSignal(str, str)  # a library leaf was dropped here
+    periodic_requested = pyqtSignal()       # the Table button was pressed
     renderer_changed = pyqtSignal(str)      # "gl" / "classic" now in use
 
     #: Set (to the reason) once GL failed at run time, so no viewer retries.
@@ -354,19 +355,30 @@ class Viewer3D(QWidget):
         self._palette_btns = []
         for el in elements.PALETTE:
             btn = QPushButton(el)
-            btn.setFixedWidth(32)
+            btn.setMinimumWidth(38)
             color = elements.color(el)
+            # explicit padding: with a stylesheet the platform's default
+            # padding no longer applies and two-letter symbols were clipped
             btn.setStyleSheet(f"background:{color}; color:{elements.text_color(el)}; "
-                              "font-weight:bold; border:1px solid #888;")
+                              "font-weight:bold; border:1px solid #888; "
+                              "border-radius:3px; padding:3px 6px;")
             btn.setToolTip(f"Bond a {elements.name(el)} atom onto the "
                            "selected atom")
             btn.clicked.connect(lambda _=False, e=el: self.add_element(e))
             row.addWidget(btn)
             self._palette_btns.append(btn)
+        # the whole periodic table, in its own window
+        self.table_btn = QPushButton("Table")
+        self.table_btn.setToolTip("Open the periodic table — pick any of the "
+                                  "118 elements (Ctrl+T)")
+        self.table_btn.setMinimumWidth(52)
+        self.table_btn.setStyleSheet("font-weight:bold; padding:3px 8px;")
+        self.table_btn.clicked.connect(self.periodic_requested)
+        row.addWidget(self.table_btn)
         # "add the active periodic-table element" — the whole table, not just
-        # the 10 quick buttons (the active element is set in the table dock).
+        # the 10 quick buttons
         self.add_active_btn = QPushButton("＋C")
-        self.add_active_btn.setFixedWidth(40)
+        self.add_active_btn.setMinimumWidth(48)
         self.add_active_btn.clicked.connect(self.add_active)
         row.addWidget(self.add_active_btn)
         self.set_active_element("C")
@@ -765,14 +777,15 @@ class Viewer3D(QWidget):
 
     def set_active_element(self, el):
         """Set the element the ＋ button / right-click 'Add' adds (driven by
-        the periodic-table dock), so any element can be built, not just the
+        the periodic-table window), so any element can be built, not just the
         10 quick buttons."""
         self.active_element = el
         color = elements.color(el)
         self.add_active_btn.setText(f"＋{el}")
         self.add_active_btn.setStyleSheet(
             f"background:{color}; color:{elements.text_color(el)}; "
-            "font-weight:bold; border:1px solid #666;")
+            "font-weight:bold; border:1px solid #666; border-radius:3px; "
+            "padding:3px 6px;")
         self.add_active_btn.setToolTip(
             f"Bond a {elements.name(el)} atom onto the selected atom")
 

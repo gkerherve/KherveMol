@@ -170,3 +170,17 @@ def test_periodic_table_is_a_window_not_a_dock(qapp):
     assert w.tb_element.currentText() == "Fe"   # added to the toolbar box
     w.show_periodic_table()                # reopening reuses the window
     assert w._ptable_window.isVisible()
+
+
+def test_table_button_in_the_add_atom_row_opens_the_table(qapp):
+    from khervemol.mainwindow import MainWindow
+    w = MainWindow()
+    row = w.viewer.table_btn.parentWidget()
+    assert row is w.viewer
+    w.viewer.table_btn.click()
+    assert w._ptable_window is not None and w._ptable_window.isVisible()
+    # the palette buttons have room for two-letter symbols (Cl, Br)
+    for b in w.viewer._palette_btns + [w.viewer.add_active_btn,
+                                       w.viewer.table_btn]:
+        assert b.minimumWidth() >= 38
+        assert "padding" in b.styleSheet()
