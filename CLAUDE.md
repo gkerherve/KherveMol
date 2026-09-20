@@ -219,6 +219,17 @@ module and import.
                      falls back to `chem.smiles_model`. Values with options are
                      query strings (`cu?cells=2,2,2`, `si:111?layers=4`,
                      `graphene?width=3&layers=2`).
+  - `updater.py`   — **auto-update from GitHub** for a source checkout: `check`
+                     (`git fetch` + ahead/behind/dirty vs the upstream),
+                     `fast_forward` (only when strictly behind and clean),
+                     `changelog_markdown` (commit subjects by `feat:`/`fix:`),
+                     `CheckWorker` (QThread) and the `Updater` controller
+                     (Help ▸ Check for Updates… / Update Automatically;
+                     `schedule()` is called only by `app.main`, so tests never
+                     fetch; `KHERVEMOL_NO_UPDATE=1` disables). Non-git installs
+                     compare against the latest GitHub release. Tests use
+                     temporary local repos. No installer / DMG pipeline exists
+                     (KherveCAD has one), so there is nothing to download.
   - `polymers.py`  — Qt-free polymer chains: `PRESETS` (40 repeat units as
                      SMILES fragments + end caps, five families),
                      `chain_smiles(unit, n, head, tail)`, `build_chain`,

@@ -371,16 +371,9 @@ class Viewer3D(QWidget):
         self.table_btn = QPushButton("Table")
         self.table_btn.setToolTip("Open the periodic table — pick any of the "
                                   "118 elements (Ctrl+T)")
-        self.table_btn.setMinimumWidth(52)
-        self.table_btn.setStyleSheet("font-weight:bold; padding:3px 8px;")
+        self.table_btn.setMinimumWidth(78)
         self.table_btn.clicked.connect(self.periodic_requested)
         row.addWidget(self.table_btn)
-        # "add the active periodic-table element" — the whole table, not just
-        # the 10 quick buttons
-        self.add_active_btn = QPushButton("＋C")
-        self.add_active_btn.setMinimumWidth(48)
-        self.add_active_btn.clicked.connect(self.add_active)
-        row.addWidget(self.add_active_btn)
         self.set_active_element("C")
         row.addSpacing(8)
         row.addWidget(QLabel("Bond:"))
@@ -744,7 +737,6 @@ class Viewer3D(QWidget):
             w.setEnabled(True)
         for btn in self._palette_btns:
             btn.setEnabled(editable)
-        self.add_active_btn.setEnabled(editable)
         self.order_combo.setEnabled(editable)
         self.join_btn.setEnabled(editable)
         self.del_btn.setEnabled(editable)
@@ -781,13 +773,17 @@ class Viewer3D(QWidget):
         10 quick buttons."""
         self.active_element = el
         color = elements.color(el)
-        self.add_active_btn.setText(f"＋{el}")
-        self.add_active_btn.setStyleSheet(
-            f"background:{color}; color:{elements.text_color(el)}; "
-            "font-weight:bold; border:1px solid #666; border-radius:3px; "
-            "padding:3px 6px;")
-        self.add_active_btn.setToolTip(
-            f"Bond a {elements.name(el)} atom onto the selected atom")
+        # the Table button carries the active element's colour: the toolbar's
+        # "Add atom" button and the right-click menu add THIS element
+        self.table_btn.setText(f"Table · {el}")
+        self.table_btn.setStyleSheet(
+            f"font-weight:bold; padding:3px 8px; background:{color}; "
+            f"color:{elements.text_color(el)}; border:1px solid #666; "
+            "border-radius:3px;")
+        self.table_btn.setToolTip(
+            f"Open the periodic table — pick any of the 118 elements. The "
+            f"active element is {elements.name(el)} ({el}): the toolbar's "
+            "Add atom button and the right-click menu add it (Ctrl+T)")
 
     def add_active(self):
         self.add_element(self.active_element)

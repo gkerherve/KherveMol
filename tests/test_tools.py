@@ -180,7 +180,66 @@ def test_table_button_in_the_add_atom_row_opens_the_table(qapp):
     w.viewer.table_btn.click()
     assert w._ptable_window is not None and w._ptable_window.isVisible()
     # the palette buttons have room for two-letter symbols (Cl, Br)
-    for b in w.viewer._palette_btns + [w.viewer.add_active_btn,
-                                       w.viewer.table_btn]:
+    for b in w.viewer._palette_btns + [w.viewer.table_btn]:
         assert b.minimumWidth() >= 38
         assert "padding" in b.styleSheet()
+
+
+def test_there_is_no_duplicate_plus_element_button(qapp):
+    from khervemol.mainwindow import MainWindow
+    w = MainWindow()
+    assert not hasattr(w.viewer, "add_active_btn")
+    w.tb_element.setCurrentText("N")
+    assert "N" in w.viewer.table_btn.text()
+    w.viewer.select_atom(0)
+
+
+def test_adsorbate_sits_above_the_top_layer_unbonded():
+    from khervemol import chem
+    base = chem.surface_model("cu", "111")
+    ben = entries.build("compound", "benzene")
+    top = max(a[3] for a in base.atoms)
+    for mode in chem.ADSORB_MODES:
+        m = chem.add_adsorbate(base, ben, height=3.0, mode=mode)
+        ads = m.atoms[len(base.atoms):]
+        assert len(ads) == len(ben.atoms)
+        assert min(a[3] for a in ads) == pytest.approx(top + 3.0)
+        # no bond between the surface and the molecule
+        assert all((i < len(base.atoms)) == (j < len(base.atoms))
+                   for i, j, _o in m.bonds)
+        assert len(m.bonds) == len(base.bonds) + len(ben.bonds)
+    flat = chem.add_adsorbate(base, ben, mode="flat")
+    up = chem.add_adsorbate(base, ben, mode="upright")
+    zs = [a[3] for a in flat.atoms[len(base.atoms):]]
+    zu = [a[3] for a in up.atoms[len(base.atoms):]]
+    assert max(zs) - min(zs) < 0.1 < max(zu) - min(zu)     # planar ring
+    with pytest.raises(BuildError):
+        chem.add_adsorbate(base, entries.build("crystal", "cu"))
+    with pytest.raises(BuildError):
+        chem.add_adsorbate(base, ben, mode="sideways")
+
+
+def test_surface_dialog_offers_the_drawn_molecule(qapp):
+    from khervemol import builders_ui, library
+    none = builders_ui.SurfaceDialog(key="cu")
+    assert none.adsorbate_source() == "none" and none.adsorbate() is None
+    assert not none.ads_source.model().item(1).isEnabled()
+    d = builders_ui.SurfaceDialog(key="cu", molecule=library.make("benzene"))
+    assert d.adsorbate_source() == "drawn"      # pre-selected when there is one
+    assert d.adsorbate().formula() == "C6H6"
+    d.ads_source.setCurrentIndex(2)
+    assert not d.ok_btn.isEnabled()             # needs a SMILES
+    d.ads_smiles.setText("CO")
+    assert d.ok_btn.isEnabled() and d.adsorbate().formula() == "CH4O"
+    assert d.placement()["mode"] == "flat"
+
+
+def test_main_window_remembers_the_molecule_through_a_surface(qapp):
+    from khervemol import library
+    from khervemol.mainwindow import MainWindow
+    w = MainWindow()
+    w.viewer.set_molecule(library.make("benzene"))
+    assert w.drawn_molecule().formula() == "C6H6"
+    w.load_entry("surface", "cu:111")
+    assert not w.viewer.editable
+    assert w.drawn_molecule().formula() == "C6H6"      # still available

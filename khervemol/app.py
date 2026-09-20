@@ -32,6 +32,7 @@ def main():
     from .mainwindow import MainWindow
     win = MainWindow()
     win.show()
+    win.updater.schedule()          # look for new commits in the background
 
     # A file path on the command line opens straight away.
     for arg in app.arguments()[1:]:

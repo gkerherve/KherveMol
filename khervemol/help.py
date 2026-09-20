@@ -253,6 +253,11 @@ sheets (1–6 layers, AB / ABA / ABC / AA or twisted), graphite surfaces, armcha
 and zigzag nanoribbons, quantum dots, a vacancy or nitrogen doping, (n,m)
 nanotubes, single- or multi-walled, and C20 / C60 / C70 / C80 … cages.</li>
 </ul>
+<p><b>A molecule on the surface.</b> The Surface builder's <i>Add on top</i>
+box places <i>the molecule I drew</i> (KherveMol remembers the last molecule
+you built or loaded, even after a surface replaced it) or a molecule from
+SMILES above the slab: lying flat, standing up or as drawn, at a chosen
+height (default 2.4 Å), offset and turn. It is not bonded to the surface.</p>
 <p>Crystals, surfaces and sheets are fixed lattices: they rotate and zoom
 but their atoms are not editable.</p>
 
@@ -292,6 +297,14 @@ anti-aliasing; each bond is drawn in halves coloured by its two atoms.
 (used automatically where OpenGL is not available). <b>View ▸ 3D style</b>
 chooses <i>Ball &amp; stick</i>, <i>Space filling</i> or <i>Sticks</i>.
 <b>Export PNG</b> renders the current view at 1600 × 1200.</p>
+
+<h3>Updates</h3>
+<p>KherveMol updates itself from GitHub: a few seconds after start and every
+half hour it looks for new commits and, if your checkout is clean, fast-forwards
+by itself, shows what changed (<i>New / Fixed / Improved</i>) and offers
+<b>Restart now</b>. A checkout with local changes or its own commits is never
+touched. <b>Help ▸ Check for Updates…</b> runs it on demand; <b>Help ▸ Update
+Automatically</b> turns it off.</p>
 
 <h3>Properties</h3>
 <p><b>Molecule ▸ Properties…</b> (Ctrl+I) shows the current molecule's

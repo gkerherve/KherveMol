@@ -191,7 +191,10 @@ assembled into a 3D model.
   **active element** (header shows its name, Z and valence). It drives both
   tabs: in the 3D view, select an atom and click the **＋*El*** button (or
   right-click ▸ *Add …*) to bond an atom of **any** element on — not just
-  the ten quick buttons. The toolbar's element box follows your pick.
+  the ten quick buttons. The toolbar's element box follows your pick, and the
+  **Table** button in the *Add atom* row (which takes the active element's
+  colour) opens the same window. There is no separate "＋C" button: the toolbar's
+  **Add atom** and the right-click menu add the active element.
 
 ## Structure outline
 
@@ -292,6 +295,15 @@ library tree):
   graphite surfaces (with a step), armchair / zigzag nanoribbons, quantum
   dots, a vacancy or nitrogen doping, single- and multi-walled (n,m)
   nanotubes, and C20 / C60 / C70 / C80 … cages.
+
+**A molecule on the surface.** The Surface builder has an *Add on top* box: choose
+*The molecule I drew* (whatever molecule you have been building or loading —
+KherveMol remembers it even after a surface replaced it on screen) or *A
+molecule from SMILES…*, then set the orientation (*lying flat*, *standing up*
+or *as it is drawn*), the height above the top atomic layer (default 2.4 Å),
+an offset dx / dy and a turn about the surface normal. The molecule is placed
+above the slab, not bonded to it. The result is a fixed structure you can
+rotate and export.
 
 Crystals, surfaces and sheets are **fixed lattices**: they rotate and zoom
 but their atoms are not editable. Fullerenes are ordinary molecules.
@@ -413,6 +425,19 @@ the built-in builder; only structure-file import and *Copy SMILES* need RDKit.
   **KhervePaint** as native, editable items (each atom a gradient-filled
   ellipse, each bond a line). Exports the 3D ball-and-stick or the 2D
   skeletal formula depending on the active tab.
+
+## Updates
+
+KherveMol keeps itself up to date from GitHub. A few seconds after it starts,
+and every half hour while it is open, it looks for new commits on the branch
+you run. If your checkout is clean (no uncommitted changes, no commits of
+your own) it fast-forwards by itself, shows what changed — grouped as *New*,
+*Fixed* and *Improved* from the commit prefixes — and offers **Restart now**.
+A checkout with local changes or its own commits is never touched: you are told
+an update exists and why it was not applied. **Help ▸ Check for Updates…**
+does it on demand and **Help ▸ Update Automatically** turns the background
+check off (or set `KHERVEMOL_NO_UPDATE=1`). A copy without `.git` looks for a
+newer GitHub *release* instead and offers its page.
 
 ## Keyboard shortcuts
 

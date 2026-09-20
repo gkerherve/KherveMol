@@ -35,6 +35,10 @@ pure-Python vector renderer where OpenGL is unavailable. RDKit is optional.
 - **Graphene, nanotubes & fullerenes** — graphene sheets (AA / AB / ABC,
   twisted bilayers, vacancies, doping), nanoribbons, quantum dots,
   graphite surfaces, (n,m) nanotubes and C20 / C60 / C70… cages.
+- **Molecules on surfaces** — place the molecule you drew (or a SMILES) on any
+  slab, flat or upright, at a chosen height.
+- **Automatic updates** — KherveMol pulls new commits from GitHub by itself
+  (clean checkouts only), shows what changed and offers to restart.
 - **Polymers** — 40 presets (PE, PVC, PTFE, PMMA, nylon, PET, Kevlar,
   silicone…) or your own SMILES repeat unit, repeated n times.
 - **Icon toolbars** — every library as a split button (builder + list) and

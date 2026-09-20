@@ -18,7 +18,7 @@ from PyQt5.QtWidgets import (QAction, QActionGroup, QApplication, QDialog,
                              QTabWidget, QTreeWidget, QTreeWidgetItem,
                              QVBoxLayout)
 
-from . import (__version__, builders_ui, dnd, document, elements, entries,
+from . import (__version__, builders_ui, chem, dnd, document, elements, entries,
                help as help_mod, icons, library, maintools, model, molrepr,
                periodic, rdkit_io, style, supercell, svgexport)
 from .ai_assistant import AiDock
@@ -66,6 +66,7 @@ class MainWindow(QMainWindow):
         # The 2D sketch is a real editor: once you edit/drop in it, it goes
         # "dirty" and 3D edits stop overwriting it (until an explicit sync).
         self._sketch_dirty = False
+        self._last_drawn = None
         self._syncing = False
         self.viewer.structure_changed.connect(self._on_changed)
         self.viewer.structure_changed.connect(
@@ -77,6 +78,8 @@ class MainWindow(QMainWindow):
         self.sketch.molecule_dropped.connect(self._on_drop_molecule)
         self.viewer.compound_dropped.connect(self._on_drop_compound_3d)
         self.viewer.periodic_requested.connect(self.show_periodic_table)
+        self.viewer.molecule_changed.connect(self._remember_drawn)
+        self.viewer.structure_changed.connect(self._remember_drawn)
 
         self._build_dock()
         self._build_ai_dock()
@@ -349,6 +352,11 @@ class MainWindow(QMainWindow):
 
         m_help = mb.addMenu("&Help")
         self._act(m_help, "User Guide", self.show_guide, "F1")
+        m_help.addSeparator()
+        from .updater import Updater
+        self.updater = Updater(self)
+        self.updater.add_menu_actions(m_help)
+        m_help.addSeparator()
         self._act(m_help, "About KherveMol", self.show_about)
 
     def _act(self, menu, text, slot, shortcut=None, icon_name=None):
@@ -693,8 +701,47 @@ class MainWindow(QMainWindow):
     def open_crystal_builder(self):
         self._run_dialog(builders_ui.CrystalDialog(self))
 
+    def drawn_molecule(self):
+        """The molecule the user has been building or loading: what is in the
+        3D view if it is an editable molecule, else the last one that was —
+        so it is still there after a surface replaced it."""
+        v = self.viewer
+        if v.editable and v.mol.atoms and not v.mol.notes:
+            return v.mol.clone()
+        return self._last_drawn
+
+    def _remember_drawn(self, *_):
+        v = self.viewer
+        if v.editable and v.mol.atoms and not v.mol.notes \
+                and not v.animating:
+            self._last_drawn = v.mol.clone()
+
     def open_surface_builder(self):
-        self._run_dialog(builders_ui.SurfaceDialog(self))
+        dlg = builders_ui.SurfaceDialog(self, molecule=self.drawn_molecule())
+        if dlg.exec_() != dlg.Accepted:
+            return
+        kind, value, label = dlg.entry()
+        try:
+            ads = dlg.adsorbate()
+        except (BuildError, KeyError, ValueError) as exc:
+            QMessageBox.warning(self, "Cannot build", str(exc.args[0]
+                                                          if exc.args else exc))
+            return
+        if ads is None:
+            self.load_entry(kind, value, label)
+            return
+        try:
+            base = entries.build(kind, value, label)
+            mol = chem.add_adsorbate(base, ads, **dlg.placement())
+        except (BuildError, KeyError, ValueError) as exc:
+            QMessageBox.warning(self, "Cannot build", str(exc.args[0]
+                                                          if exc.args else exc))
+            return
+        self.viewer.set_molecule(mol)
+        self._sync_sketch(force=True)
+        self.tabs.setCurrentIndex(0)
+        self._retitle()
+        self.statusBar().showMessage(f"{ads.label} placed on {label}")
 
     def open_nano_builder(self):
         self._run_dialog(builders_ui.NanoDialog(self))
