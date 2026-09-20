@@ -531,6 +531,15 @@ class Viewer3D(QWidget):
             "each ≥4-coordinate atom's bonded neighbours (VESTA style)")
         self.poly_btn.toggled.connect(self._on_poly)
         row.addWidget(self.poly_btn)
+        self.cell_btn = QToolButton()
+        self.cell_btn.setText("Cell outline")
+        self.cell_btn.setCheckable(True)
+        self.cell_btn.setChecked(True)
+        self.cell_btn.setToolTip(
+            "Show or hide the box drawn around the unit cell, supercell or "
+            "surface slab")
+        self.cell_btn.toggled.connect(self.set_cell_visible)
+        row.addWidget(self.cell_btn)
         row.addStretch(1)
         return row
 
@@ -1170,6 +1179,17 @@ class Viewer3D(QWidget):
         self.view.rebuild()
         self.structure_changed.emit()
 
+    def set_cell_visible(self, on):
+        """Show or hide the cell / slab outline of the current structure."""
+        on = bool(on)
+        if self.cell_btn.isChecked() != on:
+            self.cell_btn.blockSignals(True)
+            self.cell_btn.setChecked(on)
+            self.cell_btn.blockSignals(False)
+        self.mol.cell_visible = on
+        self.view.rebuild()
+        self.view_changed.emit()
+
     def _on_poly(self, on):
         self.mol.poly = bool(on)
         self.view.rebuild()
@@ -1191,6 +1211,10 @@ class Viewer3D(QWidget):
         self.poly_btn.blockSignals(True)
         self.poly_btn.setChecked(bool(self.mol.poly))
         self.poly_btn.blockSignals(False)
+        self.cell_btn.blockSignals(True)
+        self.cell_btn.setChecked(bool(self.mol.cell_visible))
+        self.cell_btn.blockSignals(False)
+        self.cell_btn.setEnabled(bool(self.mol.edges))
         self.poly_btn.setEnabled(
             molcolor.has_polyhedra(self.mol.atoms, self.mol.bonds))
 

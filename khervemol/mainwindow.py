@@ -273,6 +273,9 @@ class MainWindow(QMainWindow):
         self._xtal_legend = self._act(m_xtal, "Colour legend",
                                       self.viewer.legend_btn.toggle)
         self._xtal_legend.setCheckable(True)
+        self._xtal_cell = self._act(m_xtal, "Unit cell outline",
+                                    self._toggle_cell)
+        self._xtal_cell.setCheckable(True)
         self._act(m_xtal, "Reset cell tilts", self.viewer.reset_tilts)
         self._act(m_xtal, "Reset colours", self.viewer.reset_colors)
         m_xtal.aboutToShow.connect(self._sync_crystal_menu)
@@ -338,6 +341,11 @@ class MainWindow(QMainWindow):
             act.triggered.connect(lambda _=False, k=key: self.viewer.set_style(k))
             self._style_group.addAction(act)
             style_menu.addAction(act)
+        self._view_cell = self._act(m_view, "Unit cell outline",
+                                    self._toggle_cell)
+        self._view_cell.setCheckable(True)
+        self._view_cell.setChecked(True)
+        m_view.aboutToShow.connect(self._sync_crystal_menu)
         m_view.addSeparator()
         self._act(m_view, "Show 3D View", lambda: self.tabs.setCurrentIndex(0))
         self._act(m_view, "Show 2D Sketch", lambda: self.tabs.setCurrentIndex(1))
@@ -771,6 +779,11 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Import failed", str(exc))
 
     # ------------------------------------------------------------- crystal
+    def _toggle_cell(self):
+        """View / Crystal menu: flip the unit-cell outline."""
+        self.viewer.set_cell_visible(not self.viewer.mol.cell_visible)
+        self._sync_crystal_menu()
+
     def _sync_crystal_menu(self):
         """Keep the Crystal menu's checkmarks and enabled state in step with
         the loaded structure."""
@@ -778,6 +791,9 @@ class MainWindow(QMainWindow):
         self._xtal_poly.setChecked(v.poly_btn.isChecked())
         self._xtal_poly.setEnabled(v.poly_btn.isEnabled())
         self._xtal_legend.setChecked(v.legend_btn.isChecked())
+        for act in (self._xtal_cell, self._view_cell):
+            act.setChecked(v.cell_btn.isChecked())
+            act.setEnabled(v.cell_btn.isEnabled())
 
     def stack_cells(self):
         """Ask for an nx × ny × nz supercell and tile the crystal into it."""

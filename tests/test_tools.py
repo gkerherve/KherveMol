@@ -243,3 +243,40 @@ def test_main_window_remembers_the_molecule_through_a_surface(qapp):
     w.load_entry("surface", "cu:111")
     assert not w.viewer.editable
     assert w.drawn_molecule().formula() == "C6H6"      # still available
+
+
+def test_cell_outline_can_be_hidden_everywhere(qapp, tmp_path):
+    from khervemol import document, library
+    from khervemol.mainwindow import MainWindow
+    w = MainWindow()
+    v = w.viewer
+    w.load_entry("crystal", "srtio3?cells=2,2,2")
+    assert v.cell_btn.isEnabled() and v.cell_btn.isChecked()
+    full = len(v.mol.specs(800, 600))
+    v.cell_btn.setChecked(False)                     # the tick box
+    assert v.mol.cell_visible is False and v.mol.shown_edges is None
+    assert len(v.mol.specs(800, 600)) == full - 12   # the 12 edge lines
+    # the scene of the GL renderer is built without the outline too
+    from khervemol import glview
+    assert glview.Scene(v.mol).edges == []
+    v.mol.cell_visible = True
+    assert len(glview.Scene(v.mol).edges) == 12
+    v.mol.cell_visible = False
+    # the View menu and the Crystal menu follow, and drive it back
+    w._sync_crystal_menu()
+    assert not w._view_cell.isChecked() and not w._xtal_cell.isChecked()
+    w._view_cell.trigger()
+    assert v.mol.cell_visible and v.cell_btn.isChecked()
+    w._xtal_cell.trigger()
+    assert not v.mol.cell_visible
+    # persisted, and kept when the file is reopened
+    path = str(tmp_path / "c.kmol")
+    document.save(path, v.mol, [], [])
+    back, _a, _b = document.load(path)
+    assert back.cell_visible is False
+    v.set_molecule(back)
+    assert not v.cell_btn.isChecked()
+    # nothing to hide on a molecule
+    v.set_molecule(library.make("water"))
+    assert not v.cell_btn.isEnabled()
+    assert v.mol.clone().cell_visible

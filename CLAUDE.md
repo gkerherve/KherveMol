@@ -148,6 +148,8 @@ module and import.
                      5th slot is its colour; `atom_specs(label=True)` emits
                      a real centred **text** spec (the flag used to set a
                      key nothing rendered).
+                     `Molecule.cell_visible` (persisted, format 4) switches the cell/slab outline
+                     off: renderers draw `shown_edges`, not `edges`.
                      `Molecule` carries the **lattice state** — `cells`,
                      `tilts`, `colors`, `poly` — plus `rebuild()` (regenerate
                      a crystal for the current cells/tilts, refreshing

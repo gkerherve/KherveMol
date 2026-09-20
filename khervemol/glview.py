@@ -210,7 +210,7 @@ class Scene:
         if frozen is None:
             frozen = tilt_anchor(mol, self.style, self.factor)
         cen = frozen["centroid"] if frozen else None
-        atoms, edges = model._spread(raw, mol.edges, self.factor, cen)
+        atoms, edges = model._spread(raw, mol.shown_edges, self.factor, cen)
         self.centroid = cen if cen is not None else model._centroid(raw)
         self.atoms = atoms
         self.pos = [(a[1], a[2], a[3]) for a in atoms]
@@ -617,7 +617,7 @@ class GLView(InputMixin, QOpenGLWidget):
             return hash((o.style, m.bond, m.rscale, bool(m.poly),
                          tuple(tuple(a) for a in m.atoms),
                          tuple(tuple(b) for b in m.bonds),
-                         tuple(tuple(e) for e in (m.edges or ())),
+                         tuple(tuple(e) for e in (m.shown_edges or ())),
                          tuple(sorted(m.colors.items())),
                          repr(m.notes), tuple(m.cells),
                          repr(sorted(m.tilts.items()))))

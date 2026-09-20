@@ -831,6 +831,8 @@ class Molecule:
         self.tilts = dict(tilts or {})
         self.colors = dict(colors or {})
         self.poly = bool(poly)
+        #: draw the unit-cell / slab outline (`edges`)
+        self.cell_visible = True
         self.owners = ["0,0,0"] * len(self.atoms)
         self.members = {"0,0,0": list(range(len(self.atoms)))}
 
@@ -840,7 +842,13 @@ class Molecule:
                      self.crystal, self.edges, self.cells, self.tilts,
                      self.colors, self.poly, self.notes)
         c.reaction, c.anim = self.reaction, self.anim
+        c.cell_visible = self.cell_visible
         return c
+
+    @property
+    def shown_edges(self):
+        """The outline to draw: ``edges``, or None when it is switched off."""
+        return self.edges if self.cell_visible else None
 
     # ------------------------------------------------------ lattice state
     @property
@@ -906,7 +914,7 @@ class Molecule:
     def specs(self, w, h, tag_atoms=False, frozen=None, labels=False):
         if frozen is None:
             frozen = self._frozen_fit(w, h)
-        return _model(self.atoms, self.bonds, w, h, edges=self.edges,
+        return _model(self.atoms, self.bonds, w, h, edges=self.shown_edges,
                       rscale=self.rscale, az=self.az, el=self.el,
                       bond_scale=self.bond, tag_atoms=tag_atoms,
                       frozen=frozen, labels=labels, poly=self.poly,

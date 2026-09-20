@@ -305,6 +305,11 @@ an offset dx / dy and a turn about the surface normal. The molecule is placed
 above the slab, not bonded to it. The result is a fixed structure you can
 rotate and export.
 
+The box drawn around a unit cell, supercell or slab can be hidden: untick **Cell
+outline** in the colour row under the 3D view, or use **View ▸ Unit cell
+outline** / **Crystal ▸ Unit cell outline**. The setting is saved in the
+`.kmol` file.
+
 Crystals, surfaces and sheets are **fixed lattices**: they rotate and zoom
 but their atoms are not editable. Fullerenes are ordinary molecules.
 

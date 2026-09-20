@@ -258,6 +258,9 @@ box places <i>the molecule I drew</i> (KherveMol remembers the last molecule
 you built or loaded, even after a surface replaced it) or a molecule from
 SMILES above the slab: lying flat, standing up or as drawn, at a chosen
 height (default 2.4 Å), offset and turn. It is not bonded to the surface.</p>
+<p>The box drawn around a unit cell, supercell or slab can be hidden: untick
+<b>Cell outline</b> under the 3D view, or use <i>View ▸ Unit cell outline</i> /
+<i>Crystal ▸ Unit cell outline</i> (saved in the file).</p>
 <p>Crystals, surfaces and sheets are fixed lattices: they rotate and zoom
 but their atoms are not editable.</p>
 
