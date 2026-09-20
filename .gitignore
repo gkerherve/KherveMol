@@ -16,3 +16,5 @@ _preview/
 
 # local RDKit documentation dump (100M, reference only)
 Research/
+khervemol/VERSION
+installer/
