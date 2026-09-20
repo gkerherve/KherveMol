@@ -331,6 +331,17 @@ formulas (`H2O`, `ethanol`, `NH4+`, `SO4^2-`), an element (`Fe`, `Na+`) or
   drawing that many copies, with plus signs, the arrow (double for ⇌) and the
   formula under each species. Rotate and zoom as usual; the scene is
   read-only.
+- **Your own molecules.** Build a molecule in 3D, press **Keep** (toolbar, or the
+  *My molecules* tab beside the Library) and give it a name — *Molecule 1* by
+  default. Build the next one, keep it as *Molecule 2*, and so on, including
+  the molecule that results (call it *Product*). In the Reaction builder the
+  **My molecules** row lists them: **+ Reactant** and **+ Product** write them
+  into the equation as `@Molecule_1` (spaces become underscores), and you can
+  also type those names yourself. The reaction is balanced from the atoms you
+  built and drawn with your geometry — and the film moves your atoms. The
+  shelf is saved in your user data folder (and survives restarts); a kept
+  molecule can be loaded back (double-click), renamed, reordered, deleted, or
+  dragged onto the 3D view.
 - **Animate** (toolbar, or the row under the 3D view) plays the reaction as a
   film — it also plays once by itself when you open a reaction, then returns to
   the equation. The reactants approach and pack together, the reactant bonds

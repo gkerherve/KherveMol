@@ -20,10 +20,11 @@ from PyQt5.QtWidgets import (QAction, QActionGroup, QApplication, QDialog,
 
 from . import (__version__, builders_ui, chem, dnd, document, elements, entries,
                help as help_mod, icons, library, maintools, model, molrepr,
-               periodic, rdkit_io, style, supercell, svgexport)
+               periodic, rdkit_io, shelf, style, supercell, svgexport)
 from .ai_assistant import AiDock
 from .crystal import BuildError
 from .editor2d import Editor2D
+from .shelf_panel import ShelfPanel
 from .explorer import MoleculeExplorer
 from .structure_tree import StructureTree
 from . import viewer3d
@@ -133,6 +134,24 @@ class MainWindow(QMainWindow):
         self.splitDockWidget(struct_dock, lib_dock, Qt.Vertical)
         self.resizeDocks([struct_dock, lib_dock], [300, 460], Qt.Vertical)
         self.resizeDocks([struct_dock], [300], Qt.Horizontal)
+
+        # "My molecules": what you built and kept, in a tab beside the Library
+        shelf_dock = QDockWidget("My molecules", self)
+        shelf_dock.setAllowedAreas(Qt.LeftDockWidgetArea
+                                   | Qt.RightDockWidgetArea)
+        self.shelf = shelf.default()
+        self.shelf_panel = ShelfPanel(self.shelf)
+        self.shelf_panel.keep_requested.connect(self.keep_molecule)
+        self.shelf_panel.load_requested.connect(self.load_kept)
+        self.shelf_panel.rename_requested.connect(self.rename_kept)
+        self.shelf_panel.delete_requested.connect(self.delete_kept)
+        self.shelf_panel.move_requested.connect(self.move_kept)
+        self.shelf_panel.reaction_requested.connect(self.open_reaction_builder)
+        shelf_dock.setWidget(self.shelf_panel)
+        self.addDockWidget(Qt.LeftDockWidgetArea, shelf_dock)
+        self.tabifyDockWidget(lib_dock, shelf_dock)
+        lib_dock.raise_()
+        self._shelf_dock = shelf_dock
 
         # The periodic table is a window of its own (toolbar button / View
         # menu), not a dock: it was too big to keep on screen.
@@ -352,6 +371,7 @@ class MainWindow(QMainWindow):
         m_view.addSeparator()
         m_view.addAction(self._structure_dock.toggleViewAction())
         m_view.addAction(self._library_dock.toggleViewAction())
+        m_view.addAction(self._shelf_dock.toggleViewAction())
         self._act(m_view, "Periodic table…", self.show_periodic_table,
                   "Ctrl+T", "mdi.periodic-table")
         ai_toggle = self.ai_dock.toggleViewAction()
@@ -758,7 +778,57 @@ class MainWindow(QMainWindow):
         self._run_dialog(builders_ui.PolymerDialog(self))
 
     def open_reaction_builder(self):
-        self._run_dialog(builders_ui.ReactionDialog(self))
+        self._run_dialog(builders_ui.ReactionDialog(self, shelf=self.shelf))
+
+    # ---------------------------------------------------- kept molecules
+    def keep_molecule(self):
+        """Put the molecule in the 3D view on the shelf, under a name."""
+        mol = self.drawn_molecule()
+        if mol is None:
+            self.statusBar().showMessage("Nothing to keep: build or load a "
+                                         "molecule in the 3D view first.")
+            return
+        name, ok = QInputDialog.getText(
+            self, "Keep molecule",
+            f"Name for this molecule ({mol.formula()}):",
+            text=self.shelf.next_name())
+        if not ok:
+            return
+        try:
+            used = self.shelf.add(mol, name)
+        except BuildError as exc:
+            QMessageBox.warning(self, "Cannot keep", str(exc.args[0]))
+            return
+        self.shelf_panel.refresh(select=used)
+        self._shelf_dock.show()
+        self._shelf_dock.raise_()
+        self.statusBar().showMessage(
+            f"Kept {used} — use it in a reaction as {shelf.token(used)}.")
+
+    def _show_shelf(self):
+        self._shelf_dock.show()
+        self._shelf_dock.raise_()
+
+    def load_kept(self, name):
+        self.load_entry("mine", name, name)
+
+    def rename_kept(self, name):
+        new, ok = QInputDialog.getText(self, "Rename", "New name:", text=name)
+        if ok:
+            try:
+                self.shelf.rename(name, new)
+            except BuildError as exc:
+                QMessageBox.warning(self, "Cannot rename", str(exc.args[0]))
+                return
+            self.shelf_panel.refresh(select=new.strip())
+
+    def delete_kept(self, name):
+        self.shelf.remove(name)
+        self.shelf_panel.refresh()
+
+    def move_kept(self, name, delta):
+        self.shelf.move(name, delta)
+        self.shelf_panel.refresh(select=name)
 
     def import_file(self):
         if not self._need_rdkit():

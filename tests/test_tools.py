@@ -280,3 +280,119 @@ def test_cell_outline_can_be_hidden_everywhere(qapp, tmp_path):
     v.set_molecule(library.make("water"))
     assert not v.cell_btn.isEnabled()
     assert v.mol.clone().cell_visible
+
+
+# ------------------------------------------------------- kept molecules
+def _fresh_shelf(tmp_path):
+    from khervemol import shelf
+    return shelf.Shelf(str(tmp_path / "shelf.json"))
+
+
+def test_shelf_keeps_names_and_persists(tmp_path):
+    from khervemol import shelf
+    sh = _fresh_shelf(tmp_path)
+    m1 = entries.build("compound", "methane")
+    assert sh.add(m1) == "Molecule 1"
+    assert sh.add(entries.build("compound", "water")) == "Molecule 2"
+    assert sh.add(m1, "Fuel") == "Fuel"
+    assert sh.names() == ["Molecule 1", "Molecule 2", "Fuel"]
+    assert sh.formula("Molecule 2") == "H2O"
+    assert sh.next_name() == "Molecule 3"
+    # replaced, not duplicated, when the same name is kept again
+    sh.add(entries.build("compound", "ammonia"), "fuel")
+    assert len(sh) == 3 and sh.formula("fuel") == "H3N"
+    sh.rename("Molecule 2", "Product")
+    sh.move("Product", -1)
+    again = shelf.Shelf(sh.path)                     # a new session
+    assert again.names() == ["Product", "Molecule 1", "fuel"]
+    assert again.model("Molecule 1").formula() == "CH4"
+    assert shelf.token("Molecule 1") == "@Molecule_1"
+    assert "@molecule_1" in again and "Nope" not in again
+    again.remove("fuel")
+    assert len(shelf.Shelf(sh.path)) == 2
+
+
+def test_shelf_refuses_what_is_not_a_molecule(tmp_path):
+    sh = _fresh_shelf(tmp_path)
+    with pytest.raises(BuildError):
+        sh.add(entries.build("crystal", "cu"))
+    with pytest.raises(BuildError):
+        sh.add(entries.build("reaction", "H2 + Cl2 -> HCl"))
+    with pytest.raises(BuildError):
+        sh.add(entries.build("compound", "water"), "!!!")
+    from khervemol.model import Molecule
+    with pytest.raises(BuildError):
+        sh.add(Molecule([], []))                      # nothing to keep
+    sh.add(entries.build("compound", "water"), "A")
+    sh.add(entries.build("compound", "water"), "B")
+    with pytest.raises(BuildError):
+        sh.rename("A", "b")                           # taken
+    with pytest.raises(KeyError):
+        sh.rename("Nothing", "x")
+
+
+def test_reaction_from_kept_molecules(tmp_path, monkeypatch):
+    from khervemol import reactions, shelf
+    sh = _fresh_shelf(tmp_path)
+    monkeypatch.setattr(shelf, "_DEFAULT", sh)
+    for key in ("methane", "oxygen", "carbon_dioxide", "water"):
+        sh.add(entries.build("compound", key))
+    rx = reactions.solve("@Molecule_1 + @Molecule_2 -> @Molecule_3 + "
+                         "@Molecule_4")
+    assert rx.balanced and [str(c) for c in rx.coefs] == ["1", "2", "1", "2"]
+    assert rx.equation == "Molecule 1 + 2 Molecule 2 → Molecule 3 + 2 Molecule 4"
+    scene = reactions.layout(rx)
+    assert scene.anim is not None and len(scene.atoms) == 18
+    with pytest.raises(BuildError) as err:
+        reactions.solve("@Nope -> @Molecule_1")
+    assert "shelf" in str(err.value)
+    assert entries.build("mine", "Molecule 3").formula() == "CO2"
+
+
+def test_insert_species_builds_the_equation():
+    from khervemol.builders_ui import insert_species
+    assert insert_species(" -> ", "@A", 0) == "@A -> "
+    assert insert_species("@A -> ", "@B", 0) == "@A + @B -> "
+    assert insert_species("@A + @B -> ", "@C", 1) == "@A + @B -> @C"
+    assert insert_species("@A -> @C", "@D", 1) == "@A -> @C + @D"
+    assert insert_species("H2 + O2 <=> H2O", "@X", 1) == \
+        "H2 + O2 <=> H2O + @X"
+    assert insert_species("", "@A", 0) == "@A -> "
+
+
+def test_keep_and_use_in_the_window(qapp, tmp_path, monkeypatch):
+    from PyQt5.QtWidgets import QInputDialog
+    from khervemol import builders_ui, library, shelf
+    from khervemol.mainwindow import MainWindow
+    monkeypatch.setattr(shelf, "_DEFAULT", _fresh_shelf(tmp_path))
+    w = MainWindow()
+    assert w.shelf is shelf.default() and len(w.shelf) == 0
+    answers = iter(["Molecule 1", "Molecule 2", "Product"])
+    monkeypatch.setattr(QInputDialog, "getText",
+                        lambda *a, **k: (next(answers), True))
+    for key in ("methane", "oxygen", "carbon_dioxide"):
+        w.viewer.set_molecule(library.make(key)
+                              if key in library.names()
+                              else entries.build("compound", key))
+        w.keep_molecule()
+    assert w.shelf.names() == ["Molecule 1", "Molecule 2", "Product"]
+    assert w.shelf_panel.list.count() == 3
+    # load one back, delete one, reorder
+    w.shelf_panel.load_requested.emit("Molecule 1")
+    assert w.viewer.mol.formula() == "CH4"
+    w.move_kept("Product", -1)
+    assert w.shelf.names()[1] == "Product"
+    w.delete_kept("Molecule 2")
+    assert len(w.shelf) == 2
+    # the reaction dialog offers them and writes the equation
+    d = builders_ui.ReactionDialog(shelf=w.shelf)
+    d.new_eq.click()
+    d.mine.setCurrentIndex(d.mine.findData("Molecule 1"))
+    d.add_reactant.click()
+    d.mine.setCurrentIndex(d.mine.findData("Product"))
+    d.add_product.click()
+    assert d.text.text() == "@Molecule_1 -> @Product"
+    # Molecule 1 (CH4) cannot become CO2 on its own: reported, not raised
+    assert not d.ok_btn.isEnabled()
+    assert "balanced" in d.report.toPlainText().lower() \
+        or "solution" in d.report.toPlainText().lower()

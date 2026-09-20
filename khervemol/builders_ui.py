@@ -15,7 +15,8 @@ the Free Software Foundation, either version 3 of the License, or
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox,
                              QDoubleSpinBox, QFormLayout, QHBoxLayout, QLabel,
-                             QLineEdit, QPlainTextEdit, QSpinBox, QVBoxLayout)
+                             QLineEdit, QPlainTextEdit, QPushButton, QSpinBox,
+                             QVBoxLayout, QWidget)
 
 from urllib.parse import quote
 
@@ -481,14 +482,36 @@ class PolymerDialog(_Dialog):
         return "polymer", value, "Custom polymer"
 
 
+_ARROWS = (" <=> ", " <-> ", " -> ", " => ", " = ", " ⇌ ", " → ")
+
+
+def insert_species(text, token, side):
+    """*text* with *token* added to the reactant side (0) or the product
+    side (1): ``insert_species("A -> B", "@M", 0) == "A + @M -> B"``. With no
+    arrow yet, one is added."""
+    text = text.rstrip()
+    arrow = next((a for a in _ARROWS if a in text + " "), None)
+    if arrow is None:
+        left, right, arrow = text, "", " -> "
+    else:
+        padded = text + " "
+        i = padded.index(arrow)
+        left, right = padded[:i].strip(), padded[i + len(arrow):].strip()
+    parts = [left, right]
+    parts[side] = (parts[side] + " + " + token) if parts[side].strip(" +") \
+        else token
+    return f"{parts[0]}{arrow}{parts[1]}"
+
+
 class ReactionDialog(_Dialog):
     """Write a reaction, balance it, and lay it out in 3D."""
 
     ok_text = "Show reaction in 3D"
 
-    def __init__(self, parent=None, equation=""):
+    def __init__(self, parent=None, equation="", shelf=None):
         super().__init__("Reaction builder", parent)
         self.setMinimumWidth(560)
+        self.shelf = shelf
         self.examples = QComboBox()
         self.examples.addItem("— choose a classic reaction —", "")
         for name, eq in reactions.EXAMPLES.items():
@@ -499,6 +522,7 @@ class ReactionDialog(_Dialog):
             "Species are compound names or formulas (H2O, NH4+, SO4^2-), an "
             "element (Fe), or smiles:CCO. Arrows: ->  <=>  →  ⇌")
         self.form.addRow("Equation", self.text)
+        self._mine_rows()
         self.balance = QCheckBox("Balance the coefficients for me")
         self.balance.setChecked(True)
         self.form.addRow("", self.balance)
@@ -510,6 +534,46 @@ class ReactionDialog(_Dialog):
         self.text.textChanged.connect(self._update)
         self.balance.toggled.connect(self._update)
         self._update()
+
+    # ----------------------------------------------- my kept molecules
+    def _mine_rows(self):
+        """Pick molecules you built and kept as reactants and products."""
+        self.mine = QComboBox()
+        names = self.shelf.names() if self.shelf is not None else []
+        for n in names:
+            self.mine.addItem(f"{n}    {self.shelf.formula(n)}", n)
+        row = QHBoxLayout()
+        row.addWidget(self.mine, 1)
+        self.add_reactant = QPushButton("+ Reactant")
+        self.add_product = QPushButton("+ Product")
+        self.new_eq = QPushButton("New")
+        self.add_reactant.setToolTip("Add the chosen molecule to the left "
+                                     "side of the equation")
+        self.add_product.setToolTip("Add the chosen molecule to the right "
+                                    "side of the equation")
+        self.new_eq.setToolTip("Start an empty equation")
+        for b in (self.add_reactant, self.add_product, self.new_eq):
+            row.addWidget(b)
+        holder = QWidget()
+        holder.setLayout(row)
+        row.setContentsMargins(0, 0, 0, 0)
+        if names:
+            self.form.addRow("My molecules", holder)
+        else:
+            hint = QLabel("Build a molecule in 3D and press Keep (toolbar) "
+                          "to use it here.")
+            hint.setStyleSheet("color:#666;")
+            self.form.addRow("My molecules", hint)
+        self.add_reactant.clicked.connect(lambda: self._add_mine(0))
+        self.add_product.clicked.connect(lambda: self._add_mine(1))
+        self.new_eq.clicked.connect(lambda: self.text.setText(" -> "))
+
+    def _add_mine(self, side):
+        name = self.mine.currentData()
+        if name:
+            from . import shelf as shelf_mod
+            self.text.setText(insert_species(self.text.text(),
+                                             shelf_mod.token(name), side))
 
     def _pick(self, _i):
         eq = self.examples.currentData()

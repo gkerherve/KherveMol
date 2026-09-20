@@ -9,8 +9,11 @@ the Free Software Foundation, either version 3 of the License, or
 """
 
 import os
+import tempfile
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+# tests never touch the real user shelf / settings folder
+os.environ.setdefault("KHERVEMOL_STATE_DIR", tempfile.mkdtemp(prefix="kmol-"))
 
 import pytest  # noqa: E402
 from PyQt5.QtWidgets import QApplication  # noqa: E402

@@ -102,6 +102,13 @@ def build(win):
            win.open_reaction_builder, m["reactions"],
            "Reactions — Reaction builder and 36 classics (Ctrl+R)")
     top.addSeparator()
+    top.addSeparator()
+    _action(win, top, "Keep", win.keep_molecule, "mdi.bookmark-plus-outline",
+            "Keep the molecule in the 3D view as Molecule 1, 2, 3… on the "
+            "shelf, to use in reactions")
+    _action(win, top, "My molecules", win._show_shelf,
+            "mdi.bookmark-multiple-outline", "Show the shelf of kept molecules")
+    top.addSeparator()
     _action(win, top, "Properties", win.show_properties,
             "mdi.information-outline", "Formula, weight and descriptors "
             "(Ctrl+I)")

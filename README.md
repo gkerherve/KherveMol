@@ -35,6 +35,9 @@ pure-Python vector renderer where OpenGL is unavailable. RDKit is optional.
 - **Graphene, nanotubes & fullerenes** — graphene sheets (AA / AB / ABC,
   twisted bilayers, vacancies, doping), nanoribbons, quantum dots,
   graphite surfaces, (n,m) nanotubes and C20 / C60 / C70… cages.
+- **Your own molecules in reactions** — keep the molecules you build in 3D
+  (Molecule 1, 2, 3, the product…) on a shelf and pick them in the Reaction
+  builder; balanced and animated from your geometry.
 - **Molecules on surfaces** — place the molecule you drew (or a SMILES) on any
   slab, flat or upright, at a chosen height.
 - **Automatic updates** — KherveMol pulls new commits from GitHub by itself

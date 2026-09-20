@@ -15,6 +15,7 @@ surface    ``key:hkl`` or ``key:hkl?repeat=6,6&layers=4``  `chem`
 nano       ``graphene?width=3&layers=2`` …              `chem`
 polymer    ``key?n=8`` or ``custom?unit=CC(Cl)&n=6``    `polymers`
 reaction   an equation, ``2 H2 + O2 -> 2 H2O``          `reactions`
+mine       a name on the shelf of kept molecules        `shelf`
 ========== ============================================ ==============
 
 Copyright (C) 2026 Gwilherm Kerherve
@@ -28,14 +29,14 @@ the Free Software Foundation, either version 3 of the License, or
 from urllib.parse import parse_qs
 
 from . import (chem, compounds, crystal_library, library, polymers, rdkit_io,
-               reactions, surface)
+               reactions, shelf, surface)
 from .crystal import BuildError
 from .smiles import SmilesError
 
 #: kinds whose result is a fixed lattice / scene rather than an editable
 #: molecule
 KINDS = ("model", "compound", "smiles", "crystal", "surface", "nano",
-         "polymer", "reaction")
+         "polymer", "reaction", "mine")
 
 
 def _split(value):
@@ -100,6 +101,11 @@ def build(kind, value, label=None):
         return build_polymer(value)
     if kind == "reaction":
         return reactions.reaction_model(value)[0]
+    if kind == "mine":
+        try:
+            return shelf.default().model(value)
+        except KeyError as exc:
+            raise BuildError(str(exc.args[0]))
     raise BuildError(f"Unknown entry kind '{kind}'.")
 
 

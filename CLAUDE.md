@@ -232,6 +232,17 @@ module and import.
                      compare against the latest GitHub release. Tests use
                      temporary local repos. No installer / DMG pipeline exists
                      (KherveCAD has one), so there is nothing to download.
+  - `shelf.py`, `shelf_panel.py` — **"My molecules"**: `Shelf` keeps named
+                     molecules (atoms + bonds, JSON in the user state dir,
+                     `KHERVEMOL_STATE_DIR` overrides — tests set it to a temp
+                     folder) with `add / rename / move / remove / compound /
+                     model`; `token(name)` = `@Molecule_1`. `reactions.resolve`
+                     understands `@name` (via `shelf.default()`), `entries`
+                     has kind `mine`, and `ShelfPanel` is the dock tabbed
+                     beside the Library (Keep / Load / Rename / reorder /
+                     Delete / Use in a reaction; rows drag onto the views).
+                     `ReactionDialog` has the *My molecules* row
+                     (`insert_species`).
   - `polymers.py`  — Qt-free polymer chains: `PRESETS` (40 repeat units as
                      SMILES fragments + end caps, five families),
                      `chain_smiles(unit, n, head, tail)`, `build_chain`,

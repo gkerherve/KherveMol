@@ -29,7 +29,7 @@ import re
 from dataclasses import dataclass
 from fractions import Fraction
 
-from . import chem, compounds, elements, rxanim, smiles
+from . import chem, compounds, elements, rxanim, shelf, smiles
 from .crystal import BuildError
 from .model import Molecule
 
@@ -56,6 +56,8 @@ class Term:
         Hill H3N; Fe^2+ as Fe²⁺), else the computed formula (ethanol →
         C2H6O)."""
         t = self.text.strip()
+        if t.startswith("@"):               # a kept molecule: show its name
+            return self.compound.name
         if not _FORMULA.match(t) or t.lower().startswith("smiles:"):
             return self.compound.formula
         body, charge = _charge_of(t)
@@ -117,6 +119,13 @@ def resolve(text):
     t = text.strip()
     if not t:
         raise BuildError("An empty species.")
+    if t.startswith("@"):
+        try:
+            return shelf.default().compound(t)
+        except KeyError:
+            raise BuildError(
+                f"'{t}' is not on your shelf of kept molecules "
+                f"({', '.join(shelf.token(n) for n in shelf.default().names()) or 'it is empty'}).")
     if t.lower().startswith("smiles:"):
         s = t[7:].strip()
         try:

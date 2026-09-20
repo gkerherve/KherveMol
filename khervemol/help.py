@@ -281,6 +281,14 @@ the table shows any element that differs.</li>
 <li>The scene puts the molecules left to right (a coefficient up to 6 draws
 that many copies), with plus signs, the arrow (double for ⇌) and the formula
 under each species. It is read-only; rotate and zoom as usual.</li>
+<li><b>Your own molecules.</b> Build a molecule in 3D, press <b>Keep</b>
+(toolbar, or the <i>My molecules</i> tab beside the Library) and name it —
+<i>Molecule 1</i> by default; keep the next as <i>Molecule 2</i>, and the
+result as <i>Product</i>. In the Reaction builder the <b>My molecules</b> row
+adds them to the equation (<b>+ Reactant</b> / <b>+ Product</b>, written
+<code>@Molecule_1</code>); the reaction is balanced and drawn from the
+geometry you built. The shelf is saved between sessions; double-click loads a
+molecule back, and rows can be dragged onto the 3D view.</li>
 <li><b>Animate</b> (row under the 3D view) plays the reaction as a film:
 reactants approach, their atoms travel to the product positions as bonds
 break and form, and the products separate. Atoms are matched to keep as many
