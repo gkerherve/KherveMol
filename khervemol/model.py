@@ -855,6 +855,8 @@ class Molecule:
     def can_stack(self):
         """Whether this crystal tiles into a supercell."""
         from . import library
+        if str(self.name).startswith("crystal:"):
+            return bool(self.crystal)         # a library crystal (`chem`)
         return self.crystal and library.can_stack(self.name)
 
     @property
@@ -866,12 +868,21 @@ class Molecule:
         ``cells``/``tilts``, refreshing ``owners``. A no-op for an editable
         molecule, whose atoms are the document."""
         from . import library
-        if not self.crystal or self.name not in library.LABELS:
+        if not self.crystal:
             return
         owners, members = [], {}
-        atoms, bonds, edges, rscale = library.model_data(
-            self.name, self.cells if self.stacked else None,
-            tilts=self.tilts, owners=owners, members=members)
+        if str(self.name).startswith("crystal:"):
+            from . import chem
+            atoms, bonds, edges, rscale, label = chem.crystal_stack(
+                self.name[len("crystal:"):], self.cells, self.tilts,
+                owners, members)
+            self.label = label
+        elif self.name in library.LABELS:
+            atoms, bonds, edges, rscale = library.model_data(
+                self.name, self.cells if self.stacked else None,
+                tilts=self.tilts, owners=owners, members=members)
+        else:
+            return
         self.atoms = [list(a) for a in atoms]
         self.bonds = [list(b) for b in bonds]
         self.edges = list(edges) if edges else None
@@ -906,8 +917,13 @@ class Molecule:
         shift the whole crystal."""
         if not (self.stacked and self.tilts):
             return None
-        from . import library
-        base = library.model_data(self.name, self.cells)[0]
+        if str(self.name).startswith("crystal:"):
+            from . import chem
+            base = chem.crystal_stack(self.name[len("crystal:"):],
+                                      self.cells)[0]
+        else:
+            from . import library
+            base = library.model_data(self.name, self.cells)[0]
         return fit_params(base, [], w, h, self.az, self.el, self.bond,
                           self.rscale)
 

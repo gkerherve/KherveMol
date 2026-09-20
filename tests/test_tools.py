@@ -255,12 +255,12 @@ def test_cell_outline_can_be_hidden_everywhere(qapp, tmp_path):
     full = len(v.mol.specs(800, 600))
     v.cell_btn.setChecked(False)                     # the tick box
     assert v.mol.cell_visible is False and v.mol.shown_edges is None
-    assert len(v.mol.specs(800, 600)) == full - 12   # the 12 edge lines
+    assert len(v.mol.specs(800, 600)) == full - len(v.mol.edges)
     # the scene of the GL renderer is built without the outline too
     from khervemol import glview
     assert glview.Scene(v.mol).edges == []
     v.mol.cell_visible = True
-    assert len(glview.Scene(v.mol).edges) == 12
+    assert len(glview.Scene(v.mol).edges) == len(v.mol.edges)
     v.mol.cell_visible = False
     # the View menu and the Crystal menu follow, and drive it back
     w._sync_crystal_menu()
@@ -409,3 +409,53 @@ def test_diatomic_stands_up_or_lies_flat_on_a_surface():
     flat = chem.add_adsorbate(base, co, mode="flat", height=2.0)
     z = [a[3] for a in flat.atoms[len(base.atoms):]]
     assert max(z) - min(z) < 0.05
+
+
+def test_library_crystals_stack_and_tilt_a_cell_as_a_defect(qapp):
+    """The KhervePaint 'tilt a cell as a defect' engine works on every
+    library crystal: a tilt moves atoms without renumbering them, drags the
+    atoms shared with the neighbours, and an untilted block is unchanged."""
+    from khervemol.mainwindow import MainWindow
+    w = MainWindow()
+    v = w.viewer
+    w.load_entry("crystal", "srtio3?cells=2,2,2")
+    m = v.mol
+    assert m.can_stack and m.stacked and m.name == "crystal:srtio3"
+    assert all(wd.isVisibleTo(v) for wd in v._crystal_widgets)   # the panel
+    before = [list(a) for a in m.atoms]
+    nbonds = len(m.bonds)
+    assert set(m.members) == {f"{i},{j},{k}" for i in (0, 1)
+                              for j in (0, 1) for k in (0, 1)}
+    v.set_tilt("0,0,0", (0, 0, 20))
+    assert len(m.atoms) == len(before) and len(m.bonds) == nbonds
+    moved = [i for i, (a, b) in enumerate(zip(before, m.atoms))
+             if abs(a[1] - b[1]) + abs(a[2] - b[2]) > 1e-6]
+    assert 0 < len(moved) < len(m.atoms)          # a defect, not the whole grain
+    assert [a[0] for a in m.atoms] == [a[0] for a in before]
+    v.reset_tilts()
+    assert all(abs(a[i] - b[i]) < 1e-9 for a, b in zip(before, m.atoms)
+               for i in (1, 2, 3))
+    # the supercell spinners rebuild it, and it round-trips through a file
+    v.set_cells(3, 1, 1)
+    assert m.cells == (3, 1, 1) and "3×1×1" in m.label
+    assert len(m.atoms) != len(before)
+
+
+def test_stacked_library_crystal_persists_with_its_tilt(tmp_path):
+    from khervemol import document
+    m = entries.build("crystal", "cu?cells=2,2,1")
+    m.tilts = {"1,0,0": (10.0, 0.0, 0.0)}
+    m.rebuild()
+    path = str(tmp_path / "t.kmol")
+    document.save(path, m, [], [])
+    back, _a, _b = document.load(path)
+    assert back.cells == (2, 2, 1) and [float(x) for x in back.tilts["1,0,0"]] == [10.0, 0.0, 0.0]
+    assert back.can_stack and len(back.atoms) == len(m.atoms)
+    for a, b in zip(m.atoms, back.atoms):
+        assert a[1:4] == pytest.approx(b[1:4], abs=1e-6)
+
+
+def test_cell_contents_variant_is_a_fixed_block():
+    from khervemol import chem
+    m = chem.crystal_model("nacl", (1, 1, 1), boundary=False)
+    assert m.name == "cell:nacl" and not m.can_stack and len(m.atoms) == 8

@@ -96,7 +96,8 @@ def test_every_crystal_matches_its_data():
 @pytest.mark.parametrize("key", list(crystal_library.LIBRARY))
 def test_every_crystal_builds(key):
     m = chem.crystal_model(key, (2, 2, 2))
-    assert m.crystal and m.edges and len(m.edges) == 12
+    assert m.crystal and m.edges and len(m.edges) >= 12
+    assert m.can_stack and m.cells == (2, 2, 2)
     assert m.bonds, key
 
 

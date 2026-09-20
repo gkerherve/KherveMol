@@ -192,8 +192,13 @@ module and import.
   - `chem.py`      — the bridge to the viewer: `to_model` (Compound →
                      `model.Molecule`, Kekulé-fied, **principal-axis
                      oriented** so flat molecules face the viewer),
-                     `crystal_model` (cells, face atoms, bonds by hash grid,
-                     cell outline edges), `surface_model` (auto-sized slab),
+                     `crystal_model` / `crystal_stack` (a library crystal is a
+                     stackable `crystal:<key>` Molecule: `Molecule.rebuild`
+                     tiles its closed cell with `supercell.tile`, so the
+                     KhervePaint tilt-as-a-defect works on all 122 crystals;
+                     bonds are found on the *untilted* block and applied by
+                     index; `boundary=False` gives a fixed `cell:<key>`
+                     block), `surface_model` (auto-sized slab),
                      `nano_model`, `find_bonds`, `orient`.
   - `reactions.py` — `solve(text)` → `Reaction` (parse, exact rational
                      balance over atoms **and charge**, `source` / `equation`),

@@ -305,6 +305,15 @@ an offset dx / dy and a turn about the surface normal. The molecule is placed
 above the slab, not bonded to it. The result is a fixed structure you can
 rotate and export.
 
+**Stacking and defects on every crystal.** Any of the 120+ library crystals tiles
+into a supercell (up to 12 cells per direction) with the **Supercell** spinners under the 3D
+view, and a unit cell can be **tilted as a defect**: click an atom to pick its cell (ringed in
+orange), then turn **Tilt cell** about x / y / z. As in KhervePaint, a tilt is a defect, not a detached grain —
+the atoms the cell shares with its neighbours are dragged with it, the neighbours deform to
+follow, and nothing is renumbered. **Reset tilts** undoes it; tilts and cell counts are saved in
+the `.kmol`. Unticking *Draw atoms on the cell faces* in the Crystal builder gives the bare
+cell contents as a fixed block instead.
+
 The box drawn around a unit cell, supercell or slab can be hidden: untick **Cell
 outline** in the colour row under the 3D view, or use **View ▸ Unit cell
 outline** / **Crystal ▸ Unit cell outline**. The setting is saved in the

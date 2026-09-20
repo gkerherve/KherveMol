@@ -170,9 +170,9 @@ def param_text(name):
     illustrative parameters, or a library crystal (``crystal:key``) with
     its real cell and space group. None for anything else."""
     text = PARAM_TEXT.get(name)
-    if text is None and str(name).startswith("crystal:"):
+    if text is None and str(name).startswith(("crystal:", "cell:")):
         from . import crystal_library
-        c = crystal_library.LIBRARY.get(name[len("crystal:"):])
+        c = crystal_library.LIBRARY.get(name.split(":", 1)[1])
         if c is not None:
             text = ("a=%.4g  b=%.4g  c=%.4g   α=%g°  β=%g°  γ=%g°   %s"
                     % (c.a, c.b, c.c, c.alpha, c.beta, c.gamma,

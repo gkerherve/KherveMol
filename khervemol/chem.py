@@ -298,14 +298,99 @@ def _shift_edges(edges, mid):
             for p, q, s in edges]
 
 
+def crystal_cell_atoms(crystal):
+    """The closed conventional cell: every atom of the cell, plus the copies
+    of the atoms on its faces / edges / corners that the neighbouring cells
+    share (``[element, x, y, z]`` in ångström, origin at a corner)."""
+    eps, seen, out = 1e-6, set(), []
+    for el, *f in crystal.atoms:
+        for i in (0, 1):
+            for j in (0, 1):
+                for k in (0, 1):
+                    p = (f[0] + i, f[1] + j, f[2] + k)
+                    if max(p) > 1 + eps:
+                        continue
+                    key = (el,) + tuple(round(x, 4) for x in p)
+                    if key not in seen:
+                        seen.add(key)
+                        out.append([el, *crystal.cart(p)])
+    return out
+
+
+def crystal_stack(crystal, cells=(1, 1, 1), tilts=None, owners=None,
+                  members=None):
+    """``(atoms, bonds, edges, rscale, label)`` of *crystal* tiled into a
+    supercell with `supercell.tile` — the same engine (and the same
+    tilt-as-a-defect behaviour) as the classic lattice models.
+
+    The bonds are found on the UNTILTED supercell and applied by index, so
+    a tilted cell drags its atoms and the bonds follow them. Positions are
+    centred on the untilted block."""
+    from . import supercell
+    if isinstance(crystal, str):
+        crystal = crystal_library.get(crystal)
+    cells = tuple(int(n) for n in cells)
+    if not all(1 <= n <= supercell.MAX_CELLS for n in cells):
+        raise BuildError(f"Repeat each direction between 1 and "
+                         f"{supercell.MAX_CELLS} cells.")
+    a1, a2, a3 = crystal.vectors()
+    unit = crystal_cell_atoms(crystal)
+    edges = _wire_box((0.0, 0.0, 0.0), a1, a2, a3)
+    stacked = cells != (1, 1, 1)
+    if stacked:
+        if len(unit) * cells[0] * cells[1] * cells[2] > 4 * MAX_ATOMS:
+            raise BuildError("Too many atoms: fewer cells.")
+        flat, _b, flat_edges = supercell.tile(
+            unit, [], edges, *cells, vectors=(a1, a2, a3))
+    else:
+        flat, flat_edges = unit, edges
+    if len(flat) > MAX_ATOMS:
+        raise BuildError(f"{len(flat)} atoms is more than the viewer takes "
+                         f"({MAX_ATOMS}): fewer cells.")
+    bonds = find_bonds([a[1:4] for a in flat], [a[0] for a in flat],
+                       _pair_cutoffs(crystal))
+    if stacked and any(any(t) for t in (tilts or {}).values()):
+        atoms, _b, edges_out = supercell.tile(
+            unit, [], edges, *cells, vectors=(a1, a2, a3), tilts=tilts,
+            owners=owners, members=members)
+    elif stacked:
+        atoms, edges_out = flat, flat_edges
+        supercell.tile(unit, [], edges, *cells, vectors=(a1, a2, a3),
+                       owners=owners, members=members)
+    else:
+        atoms, edges_out = unit, edges
+        if owners is not None:
+            owners.extend(["0,0,0"] * len(atoms))
+        if members is not None:
+            members["0,0,0"] = list(range(len(atoms)))
+    mid = [(cells[0] * a1[i] + cells[1] * a2[i] + cells[2] * a3[i]) / 2
+           for i in range(3)]
+    atoms = [[a[0], a[1] - mid[0], a[2] - mid[1], a[3] - mid[2]]
+             for a in atoms]
+    edges_out = _shift_edges(edges_out, mid)
+    nn = min((d for _a, _b, d in crystal.bonds), default=2.5)
+    label = crystal.name if not stacked else \
+        f"{crystal.name} ({cells[0]}×{cells[1]}×{cells[2]} cells)"
+    return (atoms, bonds, edges_out, _ball_scale({a[0] for a in atoms}, nn),
+            label)
+
+
 def crystal_model(crystal, reps=(1, 1, 1), boundary=True):
     """A block of *crystal*: its conventional cell repeated ``reps``
     times. With *boundary*, atoms sitting on a cell face are drawn in every
-    cell that shares it (a complete-looking cube); without, only the atoms
-    inside the half-open cell — the true contents."""
+    cell that shares it (a complete-looking cube) and the block is a
+    stackable lattice — the crystal panel can change the cell counts and
+    tilt a cell as a defect; without, only the atoms inside the half-open
+    cell (the true contents), as a fixed block."""
     if isinstance(crystal, str):
         crystal = crystal_library.get(crystal)
     nx, ny, nz = (int(n) for n in reps)
+    if boundary:
+        mol = Molecule([], [], name=f"crystal:{crystal.key}", az=DEFAULT_AZ,
+                       el=DEFAULT_EL, bond=1.0, crystal=True,
+                       cells=(nx, ny, nz))
+        mol.rebuild()
+        return mol
     if not all(1 <= n <= 30 for n in (nx, ny, nz)):
         raise BuildError("Repeat each direction between 1 and 30 cells.")
     eps = 1e-6
@@ -315,18 +400,12 @@ def crystal_model(crystal, reps=(1, 1, 1), boundary=True):
             for j in range(ny + 1):
                 for k in range(nz + 1):
                     p = (fx + i, fy + j, fz + k)
-                    if boundary:
-                        keep = (p[0] <= nx + eps and p[1] <= ny + eps
-                                and p[2] <= nz + eps)
-                    else:
-                        keep = (p[0] < nx - eps and p[1] < ny - eps
-                                and p[2] < nz - eps)
-                    if keep:
+                    if p[0] < nx - eps and p[1] < ny - eps \
+                            and p[2] < nz - eps:
                         frac.append((el, p))
     if len(frac) > MAX_ATOMS:
         raise BuildError(f"{len(frac)} atoms is more than the viewer takes "
                          f"({MAX_ATOMS}): fewer cells.")
-    # keep unique positions (atoms already on a face repeat across i,j,k)
     seen, pts, els = set(), [], []
     for el, p in frac:
         key = (el,) + tuple(round(x, 4) for x in p)
@@ -339,14 +418,12 @@ def crystal_model(crystal, reps=(1, 1, 1), boundary=True):
     edges = _wire_box((0.0, 0.0, 0.0), tuple(nx * x for x in a1),
                       tuple(ny * x for x in a2), tuple(nz * x for x in a3))
     bonds = find_bonds(pts, els, _pair_cutoffs(crystal))
-    # centre on the block, so it turns about its middle
     mid = [(nx * a1[i] + ny * a2[i] + nz * a3[i]) / 2 for i in range(3)]
     atoms = [[el, p[0] - mid[0], p[1] - mid[1], p[2] - mid[2]]
              for el, p in zip(els, pts)]
     nn = min((d for _a, _b, d in crystal.bonds), default=2.5)
-    label = crystal.name if (nx, ny, nz) == (1, 1, 1) else \
-        f"{crystal.name} ({nx}×{ny}×{nz} cells)"
-    return Molecule(atoms, bonds, name=f"crystal:{crystal.key}", label=label,
+    label = f"{crystal.name} — cell contents ({nx}×{ny}×{nz})"
+    return Molecule(atoms, bonds, name=f"cell:{crystal.key}", label=label,
                     az=DEFAULT_AZ, el=DEFAULT_EL, bond=1.0,
                     rscale=_ball_scale(set(els), nn), crystal=True,
                     edges=_shift_edges(edges, mid))

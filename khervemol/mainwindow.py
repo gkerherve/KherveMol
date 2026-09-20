@@ -870,12 +870,6 @@ class MainWindow(QMainWindow):
     def stack_cells(self):
         """Ask for an nx × ny × nz supercell and tile the crystal into it."""
         v = self.viewer
-        if str(v.mol.name).startswith("crystal:"):
-            # a library crystal is rebuilt by the Crystal builder, which
-            # also picks how many cells to show
-            self._run_dialog(builders_ui.CrystalDialog(
-                self, key=v.mol.name.split(":", 1)[1]))
-            return
         if not v.mol.can_stack:
             QMessageBox.information(
                 self, "Stack unit cells",
