@@ -40,12 +40,14 @@ import math
 
 from PyQt5.QtCore import QRectF, QSize, Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QColor, QPainter, QPen
-from PyQt5.QtWidgets import (QColorDialog, QComboBox, QGraphicsEllipseItem,
+from PyQt5.QtWidgets import (QColorDialog, QComboBox, QDoubleSpinBox,
+                             QGraphicsEllipseItem,
                              QGraphicsScene, QGraphicsView, QHBoxLayout,
                              QLabel, QPushButton, QSlider, QSpinBox,
                              QToolButton, QVBoxLayout, QWidget)
 
-from . import dnd, elements, glview, icons, model, molcolor, render, supercell
+from . import (adsorbates, elements, glview, icons, model, molcolor,
+               render, supercell)
 
 _HALF = math.pi / 2.0
 _W = 400.0                               # preview model-box size (scene units)
@@ -209,6 +211,14 @@ class _View(glview.InputMixin, QGraphicsView):
                 self._frozen = model.fit_params(
                     o.mol.atoms, o.mol.bonds, _W, _W, o.mol.az, o.mol.el,
                     o.mol.bond, o.mol.rscale)
+            elif o.group_at(self._press_atom) is not None:
+                # a molecule lying on a surface slides as one piece
+                self._mode = "group"
+                self._group = o.group_at(self._press_atom)
+                o.select_group(self._group)
+                self._frozen = model.fit_params(
+                    o.mol.atoms, o.mol.bonds, _W, _W, o.mol.az, o.mol.el,
+                    o.mol.bond, o.mol.rscale)
             else:
                 self._mode = "orbit"
         self._press = event.pos()
@@ -217,6 +227,13 @@ class _View(glview.InputMixin, QGraphicsView):
             o.mol.el = max(-_HALF, min(_HALF, o.mol.el - delta.y() * 0.012))
             self.rebuild()
             self.rotated.emit()
+        elif self._mode == "group":
+            d = self.mapToScene(event.pos()) - self.mapToScene(
+                event.pos() - delta)
+            o.drag_group(self._group, d.x(), d.y(), self._frozen["scale"],
+                         vertical=bool(event.modifiers() & Qt.ShiftModifier))
+            self.rebuild()
+            o._show_group_pose()
         else:
             d = self.mapToScene(event.pos()) - self.mapToScene(
                 event.pos() - delta)
@@ -228,7 +245,11 @@ class _View(glview.InputMixin, QGraphicsView):
             o.show_geometry(self._press_atom)
 
     def mouseReleaseEvent(self, event):
-        if self._mode == "drag":
+        if self._mode == "group":
+            self._frozen = None
+            self.rebuild()
+            self._o.structure_changed.emit()
+        elif self._mode == "drag":
             self._frozen = None
             self.rebuild()
             self.atom_moved.emit()
@@ -254,6 +275,7 @@ class Viewer3D(QWidget):
     molecule_changed = pyqtSignal()         # a different structure was loaded
     compound_dropped = pyqtSignal(str, str)  # a library leaf was dropped here
     periodic_requested = pyqtSignal()       # the Table button was pressed
+    add_to_surface_requested = pyqtSignal()  # "Add molecule…" on a surface
     renderer_changed = pyqtSignal(str)      # "gl" / "classic" now in use
 
     #: Set (to the reason) once GL failed at run time, so no viewer retries.
@@ -289,6 +311,7 @@ class Viewer3D(QWidget):
         self.crystal_row = self._crystal_row()
         root.addLayout(self.crystal_row)
         root.addLayout(self._anim_row())
+        root.addLayout(self._group_row())
 
     # ------------------------------------------------------------------ UI
     def _view_toolbar(self):
@@ -590,6 +613,174 @@ class Viewer3D(QWidget):
         for w in self._crystal_widgets:
             w.setVisible(on)
 
+    # ------------------------------------------ molecules on a surface
+    def _group_row(self):
+        """Move, turn, add and remove the molecules lying on a surface."""
+        row = QHBoxLayout()
+        self._group_widgets = []
+
+        def keep(w):
+            self._group_widgets.append(w)
+            row.addWidget(w)
+            return w
+
+        keep(QLabel("On the surface:"))
+        self.group_combo = keep(QComboBox())
+        self.group_combo.setMinimumWidth(130)
+        self.group_combo.setToolTip("The molecule to move. Clicking one of "
+                                    "its atoms picks it, and dragging one "
+                                    "slides it over the surface "
+                                    "(Shift+drag lifts it)")
+        self.group_combo.currentIndexChanged.connect(self._show_group_pose)
+        self.group_mode = keep(QComboBox())
+        self.group_mode.addItem("Move (Å)", "move")
+        self.group_mode.addItem("Turn (°)", "turn")
+        self.group_mode.setToolTip("What the buttons do: slide the molecule "
+                                   "or turn it about its own centre")
+        self.group_mode.currentIndexChanged.connect(self._group_mode_changed)
+        self.group_step = keep(QDoubleSpinBox())
+        self.group_step.setRange(0.05, 90.0)
+        self.group_step.setDecimals(2)
+        self.group_step.setValue(0.5)
+        self.group_step.setToolTip("How far each button click moves or "
+                                   "turns")
+        self._group_btns = []
+        for text, axis, sign, tip in (
+                ("X−", 0, -1, "along −x (x is along the first surface "
+                              "vector)"), ("X+", 0, 1, "along +x"),
+                ("Y−", 1, -1, "along −y"), ("Y+", 1, 1, "along +y"),
+                ("Z−", 2, -1, "down, toward the surface"),
+                ("Z+", 2, 1, "up, away from the surface")):
+            b = keep(QPushButton(text))
+            b.setMaximumWidth(40)
+            b.setToolTip(tip)
+            b.clicked.connect(
+                lambda _=False, a=axis, sg=sign: self.nudge_group(a, sg))
+            self._group_btns.append(b)
+        self.group_add_btn = keep(QPushButton("Add molecule…"))
+        self.group_add_btn.setToolTip("Put another molecule on the surface")
+        self.group_add_btn.clicked.connect(self.add_to_surface_requested)
+        self.group_remove_btn = keep(QPushButton("Remove"))
+        self.group_remove_btn.setToolTip("Take the chosen molecule off the "
+                                         "surface")
+        self.group_remove_btn.clicked.connect(self.remove_current_group)
+        row.addStretch(1)
+        for w in self._group_widgets:
+            w.setVisible(False)
+        return row
+
+    def _group_mode_changed(self, *_):
+        turn = self.group_mode.currentData() == "turn"
+        self.group_step.setValue(15.0 if turn else 0.5)
+        for b, (axis, sign) in zip(self._group_btns,
+                                   ((0, -1), (0, 1), (1, -1), (1, 1),
+                                    (2, -1), (2, 1))):
+            b.setText(("Roll", "Tilt", "Turn")[axis] + ("−" if sign < 0
+                                                        else "+")
+                      if turn else "XYZ"[axis] + ("−" if sign < 0 else "+"))
+            b.setMaximumWidth(56 if turn else 40)
+
+    @property
+    def is_surface(self):
+        return str(self.mol.name).startswith("surface:")
+
+    def _sync_group_controls(self):
+        on = self.is_surface and not self.animating
+        for w in self._group_widgets:
+            w.setVisible(on)
+        if on:
+            self._refresh_group_combo()
+
+    def _refresh_group_combo(self, select=None):
+        keep = select if select is not None else self.group_combo.currentIndex()
+        self.group_combo.blockSignals(True)
+        self.group_combo.clear()
+        for gi, g in enumerate(self.mol.groups):
+            self.group_combo.addItem(g["name"], gi)
+        if self.mol.groups:
+            self.group_combo.setCurrentIndex(
+                max(0, min(len(self.mol.groups) - 1, keep)))
+        self.group_combo.blockSignals(False)
+        has = bool(self.mol.groups)
+        for w in [self.group_combo, self.group_mode, self.group_step,
+                  self.group_remove_btn] + self._group_btns:
+            w.setEnabled(has)
+        self.group_add_btn.setEnabled(True)
+
+    def current_group(self):
+        """Index of the chosen adsorbate in ``mol.groups``, or None."""
+        gi = self.group_combo.currentIndex()
+        return gi if 0 <= gi < len(self.mol.groups) else None
+
+    def group_at(self, atom):
+        return adsorbates.group_of(self.mol, atom) if self.is_surface \
+            else None
+
+    def _show_group_pose(self, *_):
+        gi = self.current_group()
+        if gi is None:
+            return
+        p = adsorbates.pose(self.mol, gi)
+        self.status.setText(
+            f"{self.mol.groups[gi]['name']} — centre at x {p['x']:.2f}, "
+            f"y {p['y']:.2f} Å, lowest atom {p['height']:.2f} Å above the "
+            "surface. Drag it to slide it, Shift+drag to lift it.")
+
+    def select_group(self, gi):
+        """Choose the adsorbate *gi* in the combo (and show its pose)."""
+        if 0 <= gi < self.group_combo.count():
+            self.group_combo.setCurrentIndex(gi)
+
+    def nudge_group(self, axis, sign):
+        """One click of an X/Y/Z button: slide or turn the chosen molecule
+        by the step."""
+        gi = self.current_group()
+        if gi is None:
+            return
+        step = sign * self.group_step.value()
+        if self.group_mode.currentData() == "turn":
+            angles = [0.0, 0.0, 0.0]
+            angles[axis] = step
+            adsorbates.rotate(self.mol, gi, *angles)
+        else:
+            d = [0.0, 0.0, 0.0]
+            d[axis] = step
+            adsorbates.translate(self.mol, gi, *d)
+        self._groups_moved()
+
+    def drag_group(self, gi, dsx, dsy, scale, vertical=False):
+        """A mouse drag of an adsorbate atom (units as `model.drag_atom`)."""
+        adsorbates.drag(self.mol, gi, dsx, dsy, self.mol.az, self.mol.el,
+                        self.mol.bond, scale, vertical=vertical)
+
+    def _groups_moved(self, full=False):
+        self.view.rebuild()
+        self._show_group_pose()
+        self.view_changed.emit()
+        if full:
+            self.structure_changed.emit()
+
+    def add_group(self, molecule, **placement):
+        """Put *molecule* on the surface (see `adsorbates.add`); returns the
+        new group's index."""
+        gi = adsorbates.add(self.mol, molecule, **placement)
+        self._refresh_group_combo(select=gi)
+        self.group_combo.setCurrentIndex(gi)
+        self._groups_moved(full=True)
+        return gi
+
+    def remove_current_group(self):
+        gi = self.current_group()
+        if gi is None:
+            return
+        adsorbates.remove(self.mol, gi)
+        self.selection = []
+        self._refresh_group_combo(select=max(0, gi - 1))
+        self.view.rebuild()
+        self.status.setText("Molecule removed from the surface.")
+        self.structure_changed.emit()
+        self.selection_changed.emit()
+
     # ------------------------------------------------- reaction animation
     def _anim_row(self):
         """Play / scrub the film of a reaction scene — hidden otherwise."""
@@ -754,6 +945,7 @@ class Viewer3D(QWidget):
             from . import reactions
             reactions.attach_animation(mol)
         self._sync_anim_controls()
+        self._sync_group_controls()
         self._update_status()
         self.view.rebuild()
         self.molecule_changed.emit()
@@ -860,6 +1052,10 @@ class Viewer3D(QWidget):
         self._update_status()
         self.view.rebuild()
         self.selection_changed.emit()
+        gi = self.group_at(self.selected)
+        if gi is not None:                  # picked a molecule on a surface
+            self.select_group(gi)
+            self._show_group_pose()
 
     def select_atom(self, index, toggle=False):
         self._on_atom_clicked(-1 if index is None else index, toggle)

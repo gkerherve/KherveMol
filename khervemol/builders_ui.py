@@ -123,13 +123,122 @@ class CrystalDialog(_Dialog):
         return "crystal", value, c.name
 
 
-class SurfaceDialog(_Dialog):
-    """A slab of any crystal cut along (hkl), optionally with a molecule
-    lying on it — the one you drew, or one typed as SMILES."""
+class _AdsorbateRows:
+    """The *Add on top* controls shared by the Surface builder and the
+    *Add molecule to surface* dialog: which molecule (the one drawn, one
+    kept on the shelf, or a SMILES), how it lies, and where."""
 
-    def __init__(self, parent=None, key="cu", molecule=None):
-        super().__init__("Surface builder", parent)
+    def _adsorbate_rows(self, molecule, shelf, allow_none=True, auto=False):
         self.molecule = molecule            # the molecule drawn, or None
+        self.shelf = shelf
+        self.ads_source = QComboBox()
+        if allow_none:
+            self.ads_source.addItem("None — the bare surface", "none")
+        label = "The molecule I drew"
+        if molecule is not None:
+            label += f" ({molecule.label}, {molecule.formula()})"
+        else:
+            label += " (draw or load a molecule first)"
+        self.ads_source.addItem(label, "drawn")
+        kept = shelf.names() if shelf is not None else []
+        self.ads_source.addItem("A kept molecule (My molecules)"
+                                + ("" if kept else " — none kept yet"), "kept")
+        self.ads_source.addItem("A molecule from SMILES…", "smiles")
+        item = self.ads_source.model().item
+        if molecule is None:
+            item(self.ads_source.findData("drawn")).setEnabled(False)
+        if not kept:
+            item(self.ads_source.findData("kept")).setEnabled(False)
+        if molecule is not None:
+            self.ads_source.setCurrentIndex(self.ads_source.findData("drawn"))
+        elif not allow_none:
+            self.ads_source.setCurrentIndex(
+                self.ads_source.findData("kept" if kept else "smiles"))
+        self.form.addRow("Add on top", self.ads_source)
+        self.ads_kept = QComboBox()
+        for n in kept:
+            self.ads_kept.addItem(f"{n}    {shelf.formula(n)}", n)
+        self.form.addRow("Kept molecule", self.ads_kept)
+        self.ads_smiles = QLineEdit()
+        self.ads_smiles.setPlaceholderText("e.g. c1ccccc1 or CO")
+        self.form.addRow("SMILES", self.ads_smiles)
+        self.ads_mode = QComboBox()
+        for text, key in (("Lying flat (largest face down)", "flat"),
+                          ("Standing up (longest axis up)", "upright"),
+                          ("As it is drawn now", "as drawn")):
+            self.ads_mode.addItem(text, key)
+        self.form.addRow("Orientation", self.ads_mode)
+        row = QHBoxLayout()
+        self.ads_height = self._dspin(0.5, 12.0, 2.4, 0.2, 1)
+        self.ads_height.setToolTip("Distance from the top atomic layer to "
+                                   "the lowest atom of the molecule (Å)")
+        self.ads_dx = self._dspin(-30, 30, 0.0, 0.5, 1)
+        self.ads_dy = self._dspin(-30, 30, 0.0, 0.5, 1)
+        self.ads_spin = self._dspin(0, 360, 0.0, 15.0, 0)
+        for lab, w in (("height Å", self.ads_height), ("dx", self.ads_dx),
+                       ("dy", self.ads_dy), ("turn °", self.ads_spin)):
+            row.addWidget(QLabel(lab))
+            row.addWidget(w)
+        self.form.addRow("Placement", row)
+        self.ads_auto = QCheckBox("At the first free spot, clear of the "
+                                  "molecules already there")
+        self.ads_auto.setChecked(auto)
+        self.form.addRow("", self.ads_auto)
+        self._ads_widgets = (self.ads_kept, self.ads_smiles, self.ads_mode,
+                             self.ads_height, self.ads_dx, self.ads_dy,
+                             self.ads_spin, self.ads_auto)
+        self.ads_source.currentIndexChanged.connect(self._sync)
+        self.ads_smiles.textChanged.connect(self._update)
+        self.ads_auto.toggled.connect(self._sync)
+
+    def adsorbate_source(self):
+        return self.ads_source.currentData()
+
+    def adsorbate(self):
+        """The molecule to place, as a viewer `Molecule`, or None. Raises
+        `BuildError` when the SMILES cannot be read."""
+        from . import entries
+        src = self.adsorbate_source()
+        if src == "drawn":
+            return self.molecule
+        if src == "kept":
+            return entries.build("mine", self.ads_kept.currentData())
+        if src == "smiles":
+            return entries.build_smiles(self.ads_smiles.text().strip())
+        return None
+
+    def placement(self):
+        """Keyword arguments for `chem.add_adsorbate` / `adsorbates.add`."""
+        return dict(height=self.ads_height.value(), dx=self.ads_dx.value(),
+                    dy=self.ads_dy.value(), mode=self.ads_mode.currentData(),
+                    spin=self.ads_spin.value(),
+                    auto=self.ads_auto.isChecked())
+
+    def _sync_adsorbate(self):
+        src = self.adsorbate_source()
+        self.ads_kept.setEnabled(src == "kept")
+        self.ads_smiles.setEnabled(src == "smiles")
+        for w in (self.ads_mode, self.ads_height, self.ads_spin,
+                  self.ads_auto):
+            w.setEnabled(src != "none")
+        free = src != "none" and not self.ads_auto.isChecked()
+        self.ads_dx.setEnabled(free)
+        self.ads_dy.setEnabled(free)
+
+    def _ads_ready(self):
+        """(ok, hint) — is the chosen source complete?"""
+        src = self.adsorbate_source()
+        if src == "smiles" and not self.ads_smiles.text().strip():
+            return False, "Type a SMILES to place on it."
+        return True, ""
+
+
+class SurfaceDialog(_AdsorbateRows, _Dialog):
+    """A slab of any crystal cut along (hkl), optionally with a molecule
+    lying on it — the one you drew, a kept one, or one typed as SMILES."""
+
+    def __init__(self, parent=None, key="cu", molecule=None, shelf=None):
+        super().__init__("Surface builder", parent)
         self.combo = _crystal_combo(key)
         self.form.addRow("Crystal", self.combo)
         self.miller = QLineEdit("111")
@@ -153,83 +262,17 @@ class SurfaceDialog(_Dialog):
         for t in (0.0, 0.25, 0.5, 0.75):
             self.term.addItem(f"Cut at {t:.2f} of a layer", t)
         self.form.addRow("Termination", self.term)
-        self._adsorbate_rows()
+        self._adsorbate_rows(molecule, shelf)
         self.auto.toggled.connect(self._sync)
         self.miller.textChanged.connect(self._update)
         self.combo.currentIndexChanged.connect(self._update)
         self.term.currentIndexChanged.connect(self._update)
         self._sync()
 
-    # ------------------------------------------------ molecule on top
-    def _adsorbate_rows(self):
-        self.ads_source = QComboBox()
-        self.ads_source.addItem("None — the bare surface", "none")
-        label = "The molecule I drew"
-        if self.molecule is not None:
-            label += f" ({self.molecule.label}, {self.molecule.formula()})"
-        else:
-            label += " (draw or load a molecule first)"
-        self.ads_source.addItem(label, "drawn")
-        self.ads_source.addItem("A molecule from SMILES…", "smiles")
-        model_ = self.ads_source.model()
-        if self.molecule is None:
-            model_.item(1).setEnabled(False)
-        else:
-            self.ads_source.setCurrentIndex(1)      # the usual reason to look
-        self.form.addRow("Add on top", self.ads_source)
-        self.ads_smiles = QLineEdit()
-        self.ads_smiles.setPlaceholderText("e.g. c1ccccc1 or CO")
-        self.form.addRow("SMILES", self.ads_smiles)
-        self.ads_mode = QComboBox()
-        for text, key in (("Lying flat (largest face down)", "flat"),
-                          ("Standing up (longest axis up)", "upright"),
-                          ("As it is drawn now", "as drawn")):
-            self.ads_mode.addItem(text, key)
-        self.form.addRow("Orientation", self.ads_mode)
-        row = QHBoxLayout()
-        self.ads_height = self._dspin(0.5, 12.0, 2.4, 0.2, 1)
-        self.ads_height.setToolTip("Distance from the top atomic layer to "
-                                   "the lowest atom of the molecule (Å)")
-        self.ads_dx = self._dspin(-30, 30, 0.0, 0.5, 1)
-        self.ads_dy = self._dspin(-30, 30, 0.0, 0.5, 1)
-        self.ads_spin = self._dspin(0, 360, 0.0, 15.0, 0)
-        for lab, w in (("height Å", self.ads_height), ("dx", self.ads_dx),
-                       ("dy", self.ads_dy), ("turn °", self.ads_spin)):
-            row.addWidget(QLabel(lab))
-            row.addWidget(w)
-        self.form.addRow("Placement", row)
-        self._ads_widgets = (self.ads_smiles, self.ads_mode, self.ads_height,
-                             self.ads_dx, self.ads_dy, self.ads_spin)
-        self.ads_source.currentIndexChanged.connect(self._sync)
-        self.ads_smiles.textChanged.connect(self._update)
-
-    def adsorbate_source(self):
-        return self.ads_source.currentData()
-
-    def adsorbate(self):
-        """The molecule to place, as a viewer `Molecule`, or None. Raises
-        `BuildError` when the SMILES cannot be read."""
-        from . import entries
-        src = self.adsorbate_source()
-        if src == "drawn":
-            return self.molecule
-        if src == "smiles":
-            return entries.build_smiles(self.ads_smiles.text().strip())
-        return None
-
-    def placement(self):
-        """Keyword arguments for `chem.add_adsorbate`."""
-        return dict(height=self.ads_height.value(), dx=self.ads_dx.value(),
-                    dy=self.ads_dy.value(), mode=self.ads_mode.currentData(),
-                    spin=self.ads_spin.value())
-
     def _sync(self, *_):
         for w in (self.nx, self.ny):
             w.setEnabled(not self.auto.isChecked())
-        src = self.adsorbate_source()
-        self.ads_smiles.setEnabled(src == "smiles")
-        for w in self._ads_widgets[1:]:
-            w.setEnabled(src != "none")
+        self._sync_adsorbate()
         self._update()
 
     def _update(self, *_):
@@ -238,13 +281,13 @@ class SurfaceDialog(_Dialog):
             c = crystal_library.LIBRARY[self.combo.currentData()]
             text = (f"{surface.label(c, hkl)} — bulk-terminated slab, top "
                     "surface facing up (no relaxation or reconstruction).")
-            ok = True
-            if self.adsorbate_source() == "smiles" \
-                    and not self.ads_smiles.text().strip():
-                text += "  Type a SMILES to place on it."
-                ok = False
+            ok, hint = self._ads_ready()
+            if not ok:
+                text += "  " + hint
             elif self.adsorbate_source() != "none":
-                text += "  The molecule is placed above it, not bonded."
+                text += ("  The molecule is placed above it, not bonded — "
+                         "move it afterwards with the Molecules on the "
+                         "surface controls.")
             self.summary.setText(text)
             self.ok_btn.setEnabled(ok)
         except BuildError as exc:
@@ -261,6 +304,30 @@ class SurfaceDialog(_Dialog):
         if self.term.currentData() is not None:
             value += f"&termination={self.term.currentData()}"
         return "surface", value, f"{key} ({hkl})"
+
+
+class AddMoleculeDialog(_AdsorbateRows, _Dialog):
+    """Put one more molecule on the surface already on screen."""
+
+    ok_text = "Add to surface"
+
+    def __init__(self, parent=None, molecule=None, shelf=None,
+                 crowded=False):
+        super().__init__("Add a molecule to the surface", parent)
+        self._adsorbate_rows(molecule, shelf, allow_none=False,
+                             auto=crowded)
+        self._sync()
+
+    def _sync(self, *_):
+        self._sync_adsorbate()
+        self._update()
+
+    def _update(self, *_):
+        ok, hint = self._ads_ready()
+        self.summary.setText(hint or "The molecule is placed above the "
+                                     "slab, not bonded; move it afterwards "
+                                     "with the buttons or by dragging it.")
+        self.ok_btn.setEnabled(ok)
 
 
 class NanoDialog(_Dialog):

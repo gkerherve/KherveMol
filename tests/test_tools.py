@@ -223,11 +223,12 @@ def test_surface_dialog_offers_the_drawn_molecule(qapp):
     from khervemol import builders_ui, library
     none = builders_ui.SurfaceDialog(key="cu")
     assert none.adsorbate_source() == "none" and none.adsorbate() is None
-    assert not none.ads_source.model().item(1).isEnabled()
+    assert not none.ads_source.model().item(
+        none.ads_source.findData("drawn")).isEnabled()
     d = builders_ui.SurfaceDialog(key="cu", molecule=library.make("benzene"))
     assert d.adsorbate_source() == "drawn"      # pre-selected when there is one
     assert d.adsorbate().formula() == "C6H6"
-    d.ads_source.setCurrentIndex(2)
+    d.ads_source.setCurrentIndex(d.ads_source.findData("smiles"))
     assert not d.ok_btn.isEnabled()             # needs a SMILES
     d.ads_smiles.setText("CO")
     assert d.ok_btn.isEnabled() and d.adsorbate().formula() == "CH4O"

@@ -739,6 +739,13 @@ class GLView(InputMixin, QOpenGLWidget):
                 self._mode = "drag"
                 self._drag_ppa = self._ppa()
                 self._frozen = self.scene.freeze()
+            elif o.group_at(self._press_atom) is not None:
+                # a molecule lying on a surface slides as one piece
+                self._mode = "group"
+                self._group = o.group_at(self._press_atom)
+                o.select_group(self._group)
+                self._drag_ppa = self._ppa()
+                self._frozen = self.scene.freeze()
             else:
                 self._mode = "orbit"
         self._press = event.pos()
@@ -747,6 +754,15 @@ class GLView(InputMixin, QOpenGLWidget):
             o.mol.el = max(-_HALF, min(_HALF, o.mol.el - delta.y() * 0.012))
             self.update()                   # rotation is a uniform — no rebuild
             self.rotated.emit()
+        elif self._mode == "group":
+            o.drag_group(self._group, delta.x(), delta.y(), self._drag_ppa,
+                         vertical=bool(event.modifiers() & Qt.ShiftModifier))
+            self._build_scene(self._frozen)
+            self._key = None
+            self._dirty = True
+            self._halo_dirty = True
+            self.update()
+            o._show_group_pose()
         else:
             model.drag_atom(o.mol.atoms, self._press_atom, delta.x(),
                             delta.y(), o.mol.az, o.mol.el, self.scene.factor,
@@ -760,7 +776,11 @@ class GLView(InputMixin, QOpenGLWidget):
             o.show_geometry(self._press_atom)
 
     def mouseReleaseEvent(self, event):
-        if self._mode == "drag":
+        if self._mode == "group":
+            self._frozen = None
+            self.rebuild()
+            self._o.structure_changed.emit()
+        elif self._mode == "drag":
             self._frozen = None
             self.rebuild()
             self.atom_moved.emit()

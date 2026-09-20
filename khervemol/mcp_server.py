@@ -174,6 +174,8 @@ ball_and_stick / space_filling / sticks, renderer gl / classic, atom \
 labels, bond spread, polyhedra); select_atoms just points at atoms. \
 properties gives formula, molecular \
 weight and (with RDKit) logP, TPSA, InChI. Files: new_document, \
+add_to_surface puts more molecules on a slab, move_adsorbate slides / \
+turns one and remove_adsorbate takes it off. \
 open_document / save_document (.kmol), export_image (PNG), export_svg \
 (opens in KhervePaint), export_model (3D printing / mesh files STL, 3MF, \
 OBJ, PLY, GLB with size in mm per angstrom; or chemistry files XYZ, MOL, \

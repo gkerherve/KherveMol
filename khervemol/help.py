@@ -264,6 +264,13 @@ can be <b>tilted as a defect</b>: click an atom to pick its cell (ringed in
 orange) and turn <i>Tilt cell</i>. The atoms shared with the neighbouring cells
 are dragged along and the neighbours deform to follow — a defect, not a detached
 grain. <i>Reset tilts</i> undoes it; both are saved in the file.</p>
+<p><b>Moving them, and adding more.</b> Each molecule on a surface moves as one piece:
+<b>drag</b> one of its atoms to slide it over the surface (<b>Shift</b> lifts it), or use the
+<i>On the surface</i> row under the 3D view — pick the molecule, set the step and click
+<i>X± Y± Z±</i> (or switch to <i>Turn</i> to roll, tilt and turn it about its centre).
+<b>Add molecule…</b> (also <i>Crystal ▸ Add molecule to surface…</i>, Ctrl+Shift+A) places another
+one — the drawn molecule, a kept one or a SMILES — at the first free spot or at an offset;
+<b>Remove</b> takes it off. Positions are saved in the file.</p>
 <p>The box drawn around a unit cell, supercell or slab can be hidden: untick
 <b>Cell outline</b> under the 3D view, or use <i>View ▸ Unit cell outline</i> /
 <i>Crystal ▸ Unit cell outline</i> (saved in the file).</p>

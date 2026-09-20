@@ -305,6 +305,17 @@ an offset dx / dy and a turn about the surface normal. The molecule is placed
 above the slab, not bonded to it. The result is a fixed structure you can
 rotate and export.
 
+**Moving them, and adding more.** Every molecule on a surface is a rigid piece you can
+move afterwards. **Drag** one of its atoms to slide the whole molecule over the surface
+(hold **Shift** to lift it instead), or use the **On the surface** row under the 3D
+view: choose the molecule, set the step, and click **X± Y± Z±** to slide it — or switch
+the box to *Turn* and the buttons roll, tilt and turn it about its own centre. Clicking
+an atom picks its molecule, and the status line reports where it is (x, y and the height
+of its lowest atom above the top layer). **Add molecule…** (also *Crystal ▸ Add molecule
+to surface…*, Ctrl+Shift+A) puts another one on the slab — the one you drew, a kept
+molecule, or a SMILES — at the first free spot, clear of the others, or at an offset you
+give; **Remove** takes the chosen one off. The positions are saved in the `.kmol`.
+
 **Stacking and defects on every crystal.** Any of the 120+ library crystals tiles
 into a supercell (up to 12 cells per direction) with the **Supercell** spinners under the 3D
 view, and a unit cell can be **tilted as a defect**: click an atom to pick its cell (ringed in

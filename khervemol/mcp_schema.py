@@ -113,6 +113,7 @@ _ADSORBATE = {
         "smiles": _s("SMILES of the adsorbate, e.g. 'CO'."),
         "compound": _s("Library compound key, name or formula."),
         "current": _b("Use the molecule currently shown."),
+        "kept": _s("Name of a molecule kept on the shelf (keep_molecule)."),
         "height": _n("Distance in angstrom from the top atomic layer to "
                      "the lowest adsorbate atom (default 2.4).",
                      minimum=0.5, maximum=15),
@@ -371,6 +372,69 @@ TOOLS = [
                               minimum=0, maximum=0.999),
             "adsorbate": _ADSORBATE,
         }, ["crystal", "miller"]),
+    },
+    {
+        "name": "add_to_surface",
+        "description": (
+            "Put one more molecule on the surface that is on screen "
+            "(build_surface first). Give exactly one of `smiles`, "
+            "`compound`, `kept` (a name from the shelf) or `current: true`. "
+            "With `auto` (default true when other molecules are already "
+            "there) it goes to the first free spot clear of them; "
+            "otherwise it is centred plus dx, dy. It is not bonded, and "
+            "move_adsorbate can move it afterwards. Returns its index and "
+            "pose."),
+        "input_schema": _obj({
+            "smiles": _s("SMILES of the molecule."),
+            "compound": _s("Library compound key, name or formula."),
+            "kept": _s("Name of a kept molecule (see keep_molecule)."),
+            "current": _b("Use the molecule that was on screen."),
+            "height": _n("Angstrom from the top layer to the lowest atom "
+                         "(default 2.4).", minimum=0.5, maximum=15),
+            "dx": _n("Shift along x from the slab centre, angstrom.",
+                     minimum=-100, maximum=100),
+            "dy": _n("Shift along y from the slab centre, angstrom.",
+                     minimum=-100, maximum=100),
+            "mode": _e("flat (default), upright or as drawn.", ADSORB_MODES),
+            "spin": _n("Degrees about the surface normal.", minimum=-360,
+                       maximum=360),
+            "auto": _b("Place at the first free spot."),
+        }, []),
+    },
+    {
+        "name": "move_adsorbate",
+        "description": (
+            "Move or turn a molecule lying on the surface: choose it by "
+            "`index` (0 is the first added) or `name`. Absolute: x, y (its "
+            "centre, angstrom, in the slab's frame) and height (lowest "
+            "atom above the top layer). Relative: dx, dy, dz slide it; "
+            "turn (about the surface normal), roll (about x) and tilt "
+            "(about y) rotate it about its own centre, in degrees. Returns "
+            "the new pose."),
+        "input_schema": _obj({
+            "index": _i("Which adsorbate (see get_document_info).",
+                        minimum=0),
+            "name": _s("Its name instead of the index."),
+            "x": _n("Absolute x of its centre, angstrom."),
+            "y": _n("Absolute y of its centre, angstrom."),
+            "height": _n("Absolute height of its lowest atom above the "
+                         "top layer, angstrom.", minimum=0.3, maximum=30),
+            "dx": _n("Slide along x, angstrom."),
+            "dy": _n("Slide along y, angstrom."),
+            "dz": _n("Slide up (+) or down (-), angstrom."),
+            "turn": _n("Rotate about the surface normal, degrees."),
+            "roll": _n("Rotate about x, degrees."),
+            "tilt": _n("Rotate about y, degrees."),
+        }, []),
+    },
+    {
+        "name": "remove_adsorbate",
+        "description": ("Take a molecule off the surface, chosen by "
+                        "`index` or `name`."),
+        "input_schema": _obj({
+            "index": _i("Which adsorbate.", minimum=0),
+            "name": _s("Its name instead of the index."),
+        }, []),
     },
     {
         "name": "build_nano",

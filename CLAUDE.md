@@ -248,6 +248,19 @@ module and import.
                      Delete / Use in a reaction; rows drag onto the views).
                      `ReactionDialog` has the *My molecules* row
                      (`insert_species`).
+  - `adsorbates.py` — molecules lying on a surface, as **groups** (`Molecule.groups`
+                     = `{"name","start","count"}`, persisted in the `.kmol`, format
+                     5): `add` (orient flat/upright/as drawn, spin, first free spot
+                     on a spiral), `translate`, `rotate` (about the group's own
+                     centre), `place` (absolute x/y/height above the top layer),
+                     `drag` (screen drag → in-plane slide, or lift), `remove`
+                     (re-indexes atoms, bonds and later groups), `pose`.
+                     `Viewer3D` has the *On the surface* row (`_group_row`,
+                     `nudge_group`, `add_group`, `remove_current_group`) and both
+                     views drag a group atom in `mouseMoveEvent` (mode "group").
+                     `builders_ui._AdsorbateRows` is shared by `SurfaceDialog` and
+                     `AddMoleculeDialog`; MCP has `add_to_surface`,
+                     `move_adsorbate`, `remove_adsorbate`.
   - `meshexport.py`, `chemexport.py`, `exports_ui.py` — **export formats**.
                      `meshexport` (Qt-free): `build_mesh(mol, style, scale
                      mm/Å, quality, cell, min_stick_mm)` → `Mesh` (UV spheres +

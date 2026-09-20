@@ -27,7 +27,7 @@ import json
 
 from . import model, render
 
-FORMAT_VERSION = 4               # 4: cell outline on/off; 3: scene notes; 2: lattice
+FORMAT_VERSION = 5               # 5: adsorbate groups; 4: cell outline; 3: notes
 
 
 def mol_to_dict(mol):
@@ -45,6 +45,7 @@ def mol_to_dict(mol):
         "notes": [_note_to_dict(n) for n in mol.notes] if mol.notes else None,
         "reaction": mol.reaction,
         "cell_visible": bool(mol.cell_visible),
+        "groups": [dict(g) for g in mol.groups],
         "cells": list(mol.cells),
         "tilts": {k: list(v) for k, v in mol.tilts.items()},
         "colors": dict(mol.colors),
@@ -78,6 +79,7 @@ def mol_from_dict(d):
         else None)
     mol.reaction = d.get("reaction")
     mol.cell_visible = bool(d.get("cell_visible", True))
+    mol.groups = [dict(g) for g in d.get("groups", [])]
     return mol
 
 

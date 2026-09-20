@@ -80,6 +80,8 @@ class MainWindow(QMainWindow):
         self.sketch.molecule_dropped.connect(self._on_drop_molecule)
         self.viewer.compound_dropped.connect(self._on_drop_compound_3d)
         self.viewer.periodic_requested.connect(self.show_periodic_table)
+        self.viewer.add_to_surface_requested.connect(
+            self.add_molecule_to_surface)
         self.viewer.molecule_changed.connect(self._remember_drawn)
         self.viewer.structure_changed.connect(self._remember_drawn)
 
@@ -271,6 +273,9 @@ class MainWindow(QMainWindow):
                   "Ctrl+Shift+F", "mdi.layers-outline")
         self._act(m_xtal, "Graphene, nanotubes & fullerenes…",
                   self.open_nano_builder, "Ctrl+Shift+G", "mdi.hexagon-multiple")
+        self._act(m_xtal, "Add molecule to surface…",
+                  self.add_molecule_to_surface, "Ctrl+Shift+A",
+                  "mdi.plus-circle-outline")
         m_xtal.addSeparator()
         self._add_groups(m_xtal, sec["Crystals"])
         m_surf = m_xtal.addMenu("Surfaces")
@@ -760,8 +765,34 @@ class MainWindow(QMainWindow):
                 and not v.animating:
             self._last_drawn = v.mol.clone()
 
+    def add_molecule_to_surface(self):
+        """Put one more molecule on the surface on screen (Crystal ▸ Add
+        molecule to surface…, or the button under the 3D view)."""
+        v = self.viewer
+        if not v.is_surface:
+            QMessageBox.information(
+                self, "Add a molecule to the surface",
+                "Build a surface first (Crystal ▸ Surface builder…), then "
+                "add molecules to it.")
+            return
+        dlg = builders_ui.AddMoleculeDialog(
+            self, molecule=self.drawn_molecule(), shelf=self.shelf,
+            crowded=bool(v.mol.groups))
+        if dlg.exec_() != dlg.Accepted:
+            return
+        try:
+            ads = dlg.adsorbate()
+            v.add_group(ads, **dlg.placement())
+        except (BuildError, KeyError, ValueError) as exc:
+            QMessageBox.warning(self, "Cannot add", str(exc.args[0]
+                                                        if exc.args else exc))
+            return
+        self.statusBar().showMessage(f"{ads.label} added to the surface — "
+                                     "drag it to move it.")
+
     def open_surface_builder(self):
-        dlg = builders_ui.SurfaceDialog(self, molecule=self.drawn_molecule())
+        dlg = builders_ui.SurfaceDialog(self, molecule=self.drawn_molecule(),
+                                        shelf=self.shelf)
         if dlg.exec_() != dlg.Accepted:
             return
         kind, value, label = dlg.entry()

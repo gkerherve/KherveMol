@@ -833,6 +833,9 @@ class Molecule:
         self.poly = bool(poly)
         #: draw the unit-cell / slab outline (`edges`)
         self.cell_visible = True
+        #: rigid groups of atoms that can be moved as one — the molecules
+        #: lying on a surface (`adsorbates`): ``{"name", "start", "count"}``
+        self.groups = []
         self.owners = ["0,0,0"] * len(self.atoms)
         self.members = {"0,0,0": list(range(len(self.atoms)))}
 
@@ -843,6 +846,7 @@ class Molecule:
                      self.colors, self.poly, self.notes)
         c.reaction, c.anim = self.reaction, self.anim
         c.cell_visible = self.cell_visible
+        c.groups = [dict(g) for g in self.groups]
         return c
 
     @property

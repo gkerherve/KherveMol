@@ -140,7 +140,7 @@ class McpToolExecutor:
 
     def _summary(self):
         mol = self._mol
-        return {
+        out = {
             "label": mol.label,
             "formula": mol.formula(),
             "kind": mcp_library.molecule_kind(mol),
@@ -148,6 +148,10 @@ class McpToolExecutor:
             "bonds": len(mol.bonds),
             "editable": bool(self._v.editable),
         }
+        if getattr(mol, "groups", None):
+            out["adsorbates"] = [self._pose(i)
+                                 for i in range(len(mol.groups))]
+        return out
 
     def _built(self, **extra):
         out = {"ok": True, **self._summary()}
@@ -414,12 +418,17 @@ class McpToolExecutor:
                            cells=list(cells))
 
     def _adsorbate(self, spec):
-        given = [k for k in ("smiles", "compound") if spec.get(k)]
+        given = [k for k in ("smiles", "compound", "kept") if spec.get(k)]
         if spec.get("current"):
             given.append("current")
         if len(given) != 1:
             raise ToolError("adsorbate needs exactly one of `smiles`, "
-                            "`compound` or `current: true`.")
+                            "`compound`, `kept` or `current: true`.")
+        if "kept" in given:
+            try:
+                return entries.build("mine", spec["kept"])
+            except BuildError as exc:
+                raise ToolError(str(exc.args[0]))
         if "current" in given:
             mol = self._mol
             if mol.crystal or not mol.atoms:
@@ -454,6 +463,87 @@ class McpToolExecutor:
                                   "formula": molecule.formula(),
                                   "atoms": len(molecule.atoms)}
         return self._built(**extra)
+
+    # -- molecules lying on a surface --------------------------------------
+    def _surface(self):
+        if not self._v.is_surface:
+            raise ToolError("The view shows no surface: build one with "
+                            "build_surface first.")
+        return self._v
+
+    def _group_index(self, args):
+        v = self._surface()
+        groups = v.mol.groups
+        if not groups:
+            raise ToolError("No molecule is on the surface yet: use "
+                            "add_to_surface.")
+        if "name" in args:
+            names = [g["name"] for g in groups]
+            hits = [i for i, n in enumerate(names)
+                    if n.lower() == str(args["name"]).lower()]
+            if not hits:
+                raise ToolError(f"No adsorbate named '{args['name']}'. "
+                                f"They are: {', '.join(names)}.")
+            return hits[0]
+        gi = args.get("index", 0 if len(groups) == 1 else None)
+        if gi is None:
+            raise ToolError("Several molecules are on the surface: give "
+                            "`index` or `name` ("
+                            + ", ".join(f"{i}={g['name']}"
+                                        for i, g in enumerate(groups)) + ").")
+        if not 0 <= gi < len(groups):
+            raise ToolError(f"index runs from 0 to {len(groups) - 1}.")
+        return gi
+
+    def _pose(self, gi):
+        from . import adsorbates
+        mol = self._v.mol
+        p = adsorbates.pose(mol, gi)
+        return {"index": gi, "name": mol.groups[gi]["name"],
+                "x": round(p["x"], 3), "y": round(p["y"], 3),
+                "height": round(p["height"], 3),
+                "atoms": mol.groups[gi]["count"]}
+
+    def _t_add_to_surface(self, args):
+        v = self._surface()
+        molecule = self._adsorbate(args)
+        mode = args.get("mode", "flat")
+        if mode == "upright" and len(molecule.atoms) == 2:
+            molecule, mode = _stand_diatomic(molecule), "as drawn"
+        try:
+            gi = v.add_group(
+                molecule, height=args.get("height", 2.4),
+                dx=args.get("dx", 0.0), dy=args.get("dy", 0.0), mode=mode,
+                spin=args.get("spin", 0.0),
+                auto=args.get("auto", bool(v.mol.groups)))
+        except BuildError as exc:
+            raise ToolError(str(exc.args[0]))
+        return self._built(adsorbate=self._pose(gi))
+
+    def _t_move_adsorbate(self, args):
+        from . import adsorbates
+        gi = self._group_index(args)
+        mol = self._v.mol
+        if any(k in args for k in ("x", "y", "height")):
+            adsorbates.place(mol, gi, args.get("x"), args.get("y"),
+                             args.get("height"))
+        if any(k in args for k in ("dx", "dy", "dz")):
+            adsorbates.translate(mol, gi, args.get("dx", 0.0),
+                                 args.get("dy", 0.0), args.get("dz", 0.0))
+        if any(k in args for k in ("turn", "roll", "tilt")):
+            adsorbates.rotate(mol, gi, rx=args.get("roll", 0.0),
+                              ry=args.get("tilt", 0.0),
+                              rz=args.get("turn", 0.0))
+        self._v._groups_moved(full=True)
+        return self._built(adsorbate=self._pose(gi))
+
+    def _t_remove_adsorbate(self, args):
+        gi = self._group_index(args)
+        name = self._v.mol.groups[gi]["name"]
+        self._v.group_combo.setCurrentIndex(gi)
+        self._v.remove_current_group()
+        return self._built(removed=name,
+                           remaining=len(self._v.mol.groups))
 
     def _t_build_nano(self, args):
         structure = args["structure"]

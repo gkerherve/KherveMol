@@ -538,31 +538,13 @@ def _principal_frame(points):
     return _eigen(cov)
 
 
-def add_adsorbate(base, molecule, height=2.4, dx=0.0, dy=0.0, mode="flat",
-                  spin=0.0):
-    """A copy of the surface *base* with *molecule* placed above it.
-
-    *molecule* is a viewer `Molecule` (any drawn or built structure). It is
-    turned by *mode* — ``"flat"`` lays its flattest side down, ``"upright"``
-    stands its longest axis up, ``"as drawn"`` keeps the orientation it has
-    now (its own y axis up) — spun *spin* degrees about the surface normal,
-    centred over the slab (plus *dx*, *dy* ångström) and lowered until its
-    lowest atom is *height* Å above the top layer. It is not bonded to the
-    surface. Raises `BuildError` for an empty molecule or a crystal."""
-    if not molecule.atoms:
-        raise BuildError("There is no molecule to place on the surface.")
-    if molecule.crystal:
-        raise BuildError("Only a molecule can be placed on a surface, not "
-                         "another crystal or scene.")
-    if mode not in ADSORB_MODES:
-        raise BuildError(f"mode is one of {', '.join(ADSORB_MODES)}.")
-    if len(base.atoms) + len(molecule.atoms) > MAX_ATOMS:
-        raise BuildError("Too many atoms: shrink the slab or the molecule.")
-    pts = [tuple(a[1:4]) for a in molecule.atoms]
+def _orient_points(pts, mode):
+    """Centred points turned by *mode* (see `add_adsorbate`): the flattest
+    side down, the longest axis up, or as they are."""
     n = len(pts)
-    c = [sum(p[i] for p in pts) / n for i in range(3)]
-    pts = [tuple(p[i] - c[i] for i in range(3)) for p in pts]
-    if mode != "as drawn" and n == 2:
+    if mode == "as drawn" or n < 2:
+        return pts
+    if n == 2:
         # a diatomic has one axis: along x when flat, up (z) when upright
         d = [pts[1][i] - pts[0][i] for i in range(3)]
         ln = math.sqrt(sum(v * v for v in d)) or 1.0
@@ -575,33 +557,43 @@ def add_adsorbate(base, molecule, height=2.4, dx=0.0, dy=0.0, mode="flat",
         e2 = [v / n2 for v in e2]
         e3 = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2],
               e1[0] * e2[1] - e1[1] * e2[0]]
-        axes = (e1, e2, e3) if mode == "flat" else (e3, e2, e1)
-        pts = [tuple(sum(p[i] * ax[i] for i in range(3)) for ax in axes)
-               for p in pts]
-    elif mode != "as drawn" and n >= 3:
+    else:
         e1, e2, e3 = _principal_frame(pts)
-        # flat: longest along x, middle along y, shortest up (z);
-        # upright: shortest along x, middle along y, longest up
-        axes = (e1, e2, e3) if mode == "flat" else (e3, e2, e1)
-        pts = [tuple(sum(p[i] * ax[i] for i in range(3)) for ax in axes)
-               for p in pts]
-    a = math.radians(spin)
-    ca, sa = math.cos(a), math.sin(a)
-    pts = [(p[0] * ca - p[1] * sa, p[0] * sa + p[1] * ca, p[2])
-           for p in pts]
-    top = max(a_[3] for a_ in base.atoms)
-    low = min(p[2] for p in pts)
-    cx = (max(a_[1] for a_ in base.atoms) + min(a_[1] for a_ in base.atoms)) / 2
-    cy = (max(a_[2] for a_ in base.atoms) + min(a_[2] for a_ in base.atoms)) / 2
-    lift = top + float(height) - low
-    atoms = [list(a_) for a_ in base.atoms]
-    offset = len(atoms)
-    for a_, p in zip(molecule.atoms, pts):
-        atoms.append([a_[0], p[0] + cx + dx, p[1] + cy + dy, p[2] + lift])
-    bonds = [list(b) for b in base.bonds]
-    bonds += [[i + offset, j + offset, o] for i, j, o in molecule.bonds]
-    out = Molecule(atoms, bonds, name=f"{base.name}+ads",
-                   label=f"{base.label} + {molecule.label}", az=base.az,
-                   el=base.el, bond=base.bond, rscale=base.rscale,
-                   crystal=True, edges=base.edges)
+    # flat: longest along x, middle along y, shortest up (z);
+    # upright: shortest along x, middle along y, longest up
+    axes = (e1, e2, e3) if mode == "flat" else (e3, e2, e1)
+    return [tuple(sum(p[i] * ax[i] for i in range(3)) for ax in axes)
+            for p in pts]
+
+
+def add_adsorbate(base, molecule, height=2.4, dx=0.0, dy=0.0, mode="flat",
+                  spin=0.0, auto=False, name=None):
+    """A copy of the surface *base* with *molecule* placed above it.
+
+    *molecule* is a viewer `Molecule` (any drawn or built structure). It is
+    turned by *mode* — ``"flat"`` lays its flattest side down, ``"upright"``
+    stands its longest axis up, ``"as drawn"`` keeps the orientation it has
+    now — spun *spin* degrees about the surface normal, centred over the
+    slab (plus *dx*, *dy* ångström; with *auto*, at the first free spot) and
+    lowered until its lowest atom is *height* Å above the top layer. It is
+    not bonded to the surface, and it becomes a *group* the viewer can move
+    (see `adsorbates`). Raises `BuildError` for an empty molecule or a
+    crystal."""
+    from . import adsorbates
+    if not molecule.atoms:
+        raise BuildError("There is no molecule to place on the surface.")
+    if molecule.crystal:
+        raise BuildError("Only a molecule can be placed on a surface, not "
+                         "another crystal or scene.")
+    if mode not in ADSORB_MODES:
+        raise BuildError(f"mode is one of {', '.join(ADSORB_MODES)}.")
+    if len(base.atoms) + len(molecule.atoms) > MAX_ATOMS:
+        raise BuildError("Too many atoms: shrink the slab or the molecule.")
+    out = Molecule(base.atoms, base.bonds, name=f"{base.name}+ads",
+                   label=base.label, az=base.az, el=base.el, bond=base.bond,
+                   rscale=base.rscale, crystal=True, edges=base.edges)
+    out.groups = [dict(g) for g in base.groups]
+    adsorbates.add(out, molecule, name=name, height=height, dx=dx, dy=dy,
+                   mode=mode, spin=spin, auto=auto)
+    out.label = f"{base.label} + {molecule.label}"
     return out
