@@ -317,6 +317,17 @@ by itself, shows what changed (<i>New / Fixed / Improved</i>) and offers
 touched. <b>Help ▸ Check for Updates…</b> runs it on demand; <b>Help ▸ Update
 Automatically</b> turns it off.</p>
 
+<h3>Connect to Claude (MCP)</h3>
+<p><b>Help ▸ Connect to Claude (MCP)…</b> lets Claude Desktop, Claude Code,
+Cursor and other assistants drive this window: they can search the library,
+build molecules, crystals, surfaces (with an adsorbate), nanostructures,
+polymers and balanced reactions, edit atoms and bonds, change the view and
+look at the result. It is off until you tick <i>Let assistants connect</i>,
+listens on this computer only (127.0.0.1, random token) and needs no API key.
+Press <b>Connect</b> next to your application, restart it, then say
+“KherveMol” in the chat — e.g. <i>“in KherveMol, show caffeine”</i>. The
+access level (Read only / Edit / Full) is yours to set.</p>
+
 <h3>Properties</h3>
 <p><b>Molecule ▸ Properties…</b> (Ctrl+I) shows the current molecule's
 formula, molecular weight and atom counts — these always work. With

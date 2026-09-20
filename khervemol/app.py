@@ -19,6 +19,10 @@ CRASH_LOG = Path(tempfile.gettempdir()) / "khervemol_crash.log"
 
 
 def main():
+    if "--mcp-server" in sys.argv[1:]:       # e.g. a frozen build's entry
+        from .mcp_server import main as mcp_main
+        sys.exit(mcp_main([a for a in sys.argv[1:] if a != "--mcp-server"]))
+
     crash_file = open(CRASH_LOG, "w")
     faulthandler.enable(file=crash_file)
 

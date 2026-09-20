@@ -455,6 +455,39 @@ does it on demand and **Help ▸ Update Automatically** turns the background
 check off (or set `KHERVEMOL_NO_UPDATE=1`). A copy without `.git` looks for a
 newer GitHub *release* instead and offers its page.
 
+## Connect to Claude (MCP)
+
+**Help ▸ Connect to Claude (MCP)…** lets an assistant — Claude Desktop, Claude
+Code, Cursor, Cline, VS Code, LM Studio — drive the live KherveMol window
+through the Model Context Protocol. Ask *"in KherveMol, show caffeine and give me
+its formula"*, *"build Pt(111) with CO standing on it and render it"* or
+*"balance the combustion of propane and play the reaction"* and it happens in
+front of you. No API key: the assistant uses your own login.
+
+- **Off until you turn it on.** Tick *Let assistants connect to KherveMol*. The
+  bridge listens on `127.0.0.1` only (never the network), behind a random token
+  kept in a user-only file in KherveMol's data folder; the choice is remembered
+  and the bridge re-opens on the next start.
+- **Connect an application.** The dialog detects the assistants installed on
+  your machine; press *Connect* and KherveMol writes its own entry (server name
+  `khervemol`, command `python -m khervemol.mcp_server`) into that application's
+  config, with a backup. *Copy* gives the JSON, the `claude mcp add` command or
+  the HTTP endpoint for anything else. Restart the assistant afterwards, then
+  say "KherveMol" in the chat.
+- **What it can do.** Search the whole library; build molecules (library or any
+  SMILES), crystals, surfaces (any Miller plane, optionally with an adsorbate),
+  graphene / nanotubes / fullerenes, polymers and reactions (balanced, with the
+  animated film); edit atoms and bonds with the same valence rules and bond
+  lengths as the mouse; change the view and style; look at the result
+  (`render_view` returns a picture); read properties; open, save and export
+  `.kmol`, PNG and SVG.
+- **Access level.** *Read only* (look, never change), *Edit* (change the
+  molecule, save over the open file) or *Full* (also open / export files it
+  names itself). *Recent activity* lists every call.
+- **From a terminal.** `python KherveMol.py --mcp-server` (or `python -m
+  khervemol.mcp_server`) is the small Qt-free server the assistant launches; it
+  finds the running window through the endpoint file.
+
 ## Keyboard shortcuts
 
 | Action | Shortcut |

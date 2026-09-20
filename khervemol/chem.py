@@ -485,7 +485,23 @@ def add_adsorbate(base, molecule, height=2.4, dx=0.0, dy=0.0, mode="flat",
     n = len(pts)
     c = [sum(p[i] for p in pts) / n for i in range(3)]
     pts = [tuple(p[i] - c[i] for i in range(3)) for p in pts]
-    if mode != "as drawn" and n >= 3:
+    if mode != "as drawn" and n == 2:
+        # a diatomic has one axis: along x when flat, up (z) when upright
+        d = [pts[1][i] - pts[0][i] for i in range(3)]
+        ln = math.sqrt(sum(v * v for v in d)) or 1.0
+        e1 = [v / ln for v in d]
+        helper = (0.0, 0.0, 1.0) if abs(e1[2]) < 0.9 else (1.0, 0.0, 0.0)
+        e2 = [e1[1] * helper[2] - e1[2] * helper[1],
+              e1[2] * helper[0] - e1[0] * helper[2],
+              e1[0] * helper[1] - e1[1] * helper[0]]
+        n2 = math.sqrt(sum(v * v for v in e2)) or 1.0
+        e2 = [v / n2 for v in e2]
+        e3 = [e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2],
+              e1[0] * e2[1] - e1[1] * e2[0]]
+        axes = (e1, e2, e3) if mode == "flat" else (e3, e2, e1)
+        pts = [tuple(sum(p[i] * ax[i] for i in range(3)) for ax in axes)
+               for p in pts]
+    elif mode != "as drawn" and n >= 3:
         e1, e2, e3 = _principal_frame(pts)
         # flat: longest along x, middle along y, shortest up (z);
         # upright: shortest along x, middle along y, longest up

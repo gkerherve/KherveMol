@@ -73,6 +73,11 @@ pure-Python vector renderer where OpenGL is unavailable. RDKit is optional.
 - **SMILES & file import (optional, via RDKit)** — type a SMILES string to
   embed a real 3D conformer, or open `.mol` / `.sdf` / `.pdb` files. Works
   headless, no Jupyter. `pip install rdkit` to enable.
+- **Connect to Claude (MCP)** — let Claude Desktop, Claude Code or Cursor
+  drive the live window: search the library, build molecules, crystals,
+  surfaces (with adsorbates), nanostructures, polymers and reactions, edit
+  atoms and bonds, and look at the result. Local-only, off until you enable
+  it (Help ▸ Connect to Claude).
 - **`.kmol` save/open** and **PNG export**.
 - Themeable UI shared with the rest of the Kherve family.
 

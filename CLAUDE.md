@@ -501,6 +501,26 @@ module and import.
                      done/failed signals, so a slow/failed request never
                      blocks or crashes the UI — errors show as a red chat
                      line. `AiSettingsDialog` sets provider/model/key.
+  - `mcp_*.py`    — the **MCP server** (KherveCAD's architecture, renamed):
+                     `mcp_server.py` is the Qt-free stdio JSON-RPC server an
+                     assistant launches (`python -m khervemol.mcp_server` /
+                     `KherveMol.py --mcp-server`); it forwards `tools/call` over
+                     a loopback socket to `mcp_bridge.McpBridge` (in-app
+                     `QTcpServer` on 127.0.0.1, random token in a 0600
+                     `mcp-bridge.json` in the per-user state dir —
+                     `KHERVEMOL_STATE_DIR` overrides; **off until the user
+                     enables it**; access levels read / edit / full).
+                     `mcp_http.py` is the same bridge as Streamable HTTP
+                     (Origin + bearer checked). `mcp_schema.py` (Qt-free) holds
+                     the tool table and `check_args`, the validation layer;
+                     `mcp_tools.py` runs each tool on the GUI thread against the
+                     live `MainWindow` (never a modal dialog); `mcp_library.py`
+                     has the list / search / resolve helpers; `mcp_hosts.py`
+                     writes the config entry into Claude Desktop / Claude Code /
+                     Cursor / …; `mcp_dialog.py` is the Help ▸ Connect to Claude
+                     (MCP)… dialog and `install(window)`. A new tool = a
+                     `TOOLS` entry + a `_t_<name>` method (+ a mention in the
+                     server `_INSTRUCTIONS`); `tests/test_mcp.py` enforces it.
   - `help.py`      — About dialog + in-app User Guide (`Help ▸ User
                      Guide`, F1). Keep the guide and `USERGUIDE.md` in sync
                      when features change.

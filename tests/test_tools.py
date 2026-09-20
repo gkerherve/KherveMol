@@ -396,3 +396,16 @@ def test_keep_and_use_in_the_window(qapp, tmp_path, monkeypatch):
     assert not d.ok_btn.isEnabled()
     assert "balanced" in d.report.toPlainText().lower() \
         or "solution" in d.report.toPlainText().lower()
+
+
+def test_diatomic_stands_up_or_lies_flat_on_a_surface():
+    from khervemol import chem
+    base = chem.surface_model("cu", "111")
+    co = entries.build("compound", "carbon_monoxide")
+    top = max(a[3] for a in base.atoms)
+    up = chem.add_adsorbate(base, co, mode="upright", height=2.0)
+    z = sorted(a[3] for a in up.atoms[len(base.atoms):])
+    assert z[0] == pytest.approx(top + 2.0) and z[1] - z[0] > 1.0
+    flat = chem.add_adsorbate(base, co, mode="flat", height=2.0)
+    z = [a[3] for a in flat.atoms[len(base.atoms):]]
+    assert max(z) - min(z) < 0.05

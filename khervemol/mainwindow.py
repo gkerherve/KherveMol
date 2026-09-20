@@ -92,6 +92,8 @@ class MainWindow(QMainWindow):
         self._sync_sketch(force=True)
         self._retitle()
         self.resize(1160, 780)
+        from . import mcp_dialog
+        mcp_dialog.install(self)
 
     # --------------------------------------------------------------- docks
     def _build_dock(self):
