@@ -37,7 +37,8 @@ pure-Python vector renderer where OpenGL is unavailable. RDKit is optional.
   graphite surfaces, (n,m) nanotubes and C20 / C60 / C70… cages.
 - **Reactions** — type `CH4 + O2 -> CO2 + H2O`; KherveMol balances atoms
   and charge and lays the balanced reaction out in 3D, with the molecules,
-  coefficients, plus signs and arrow. 36 classic reactions included.
+  coefficients, plus signs and arrow — then press **Animate** to watch the atoms
+  rearrange, bonds breaking and forming. 36 classic reactions included.
 - **2D structure sketcher** — proper skeletal formulae (line bonds,
   lettered heteroatoms, implicit H). Loading/building mirrors the 3D model
   into it automatically; **Build 3D from 2D sketch** (Ctrl+B) goes the other

@@ -287,6 +287,7 @@ class Viewer3D(QWidget):
         root.addLayout(self._color_row())
         self.crystal_row = self._crystal_row()
         root.addLayout(self.crystal_row)
+        root.addLayout(self._anim_row())
 
     # ------------------------------------------------------------------ UI
     def _view_toolbar(self):
@@ -575,8 +576,139 @@ class Viewer3D(QWidget):
         for w in self._crystal_widgets:
             w.setVisible(on)
 
+    # ------------------------------------------------- reaction animation
+    def _anim_row(self):
+        """Play / scrub the film of a reaction scene — hidden otherwise."""
+        row = QHBoxLayout()
+        self._anim_widgets = []
+        self._anim_p = None             # progress 0..1 in film mode, else None
+        self._anim_timer = QTimer(self)
+        self._anim_timer.setInterval(33)
+        self._anim_timer.timeout.connect(self._anim_tick)
+
+        def keep(w):
+            self._anim_widgets.append(w)
+            row.addWidget(w)
+            return w
+
+        self.play_btn = keep(QPushButton("▶ Animate"))
+        self.play_btn.setToolTip("Watch the atoms rearrange: reactants "
+                                 "approach, bonds break and form, products "
+                                 "separate")
+        self.play_btn.clicked.connect(self.toggle_animation)
+        self.stop_btn = keep(QPushButton("■ Equation"))
+        self.stop_btn.setToolTip("Back to the equation with its arrow")
+        self.stop_btn.clicked.connect(self.stop_animation)
+        self.anim_slider = keep(QSlider(Qt.Horizontal))
+        self.anim_slider.setRange(0, 1000)
+        self.anim_slider.setToolTip("Scrub through the reaction")
+        self.anim_slider.valueChanged.connect(
+            lambda v: self.set_progress(v / 1000.0, scrub=True))
+        row.setStretchFactor(self.anim_slider, 1)
+        self.speed_combo = keep(QComboBox())
+        for label, speed in (("0.5×", 0.5), ("1×", 1.0), ("2×", 2.0)):
+            self.speed_combo.addItem(label, speed)
+        self.speed_combo.setCurrentIndex(1)
+        self.loop_btn = keep(QToolButton())
+        self.loop_btn.setText("Loop")
+        self.loop_btn.setCheckable(True)
+        for w in self._anim_widgets:
+            w.setVisible(False)
+        return row
+
+    @property
+    def has_animation(self):
+        return getattr(self.mol, "anim", None) is not None
+
+    @property
+    def animating(self):
+        """True while the scene shows the film (playing or paused)."""
+        return self._anim_p is not None
+
+    @property
+    def playing(self):
+        return self._anim_timer.isActive()
+
+    def _sync_anim_controls(self):
+        for w in self._anim_widgets:
+            w.setVisible(self.has_animation)
+        self.play_btn.setText("▶ Animate")
+
+    def _end_animation(self, restore=True):
+        """Leave film mode; bring back the equation scene."""
+        self._anim_timer.stop()
+        if self._anim_p is not None and restore and self.has_animation:
+            self.mol.anim.restore(self.mol)
+        self._anim_p = None
+        self.anim_slider.blockSignals(True)
+        self.anim_slider.setValue(0)
+        self.anim_slider.blockSignals(False)
+        self.play_btn.setText("▶ Animate")
+
+    def set_progress(self, p, scrub=False):
+        """Show the film at progress *p* (0..1)."""
+        if not self.has_animation:
+            return
+        first = self._anim_p is None
+        if scrub and self.playing:
+            self._anim_timer.stop()
+            self.play_btn.setText("▶ Animate")
+        self._anim_p = max(0.0, min(1.0, p))
+        self.mol.anim.apply(self.mol, self._anim_p)
+        self.selection = []
+        if not scrub:
+            self.anim_slider.blockSignals(True)
+            self.anim_slider.setValue(int(self._anim_p * 1000))
+            self.anim_slider.blockSignals(False)
+        self.view.rebuild()
+        if first:                       # the atom list changed: refresh trees
+            self.molecule_changed.emit()
+            self.selection_changed.emit()
+        self.status.setText(f"{self.mol.anim.title} — "
+                            f"{self.mol.anim.stage(self._anim_p)}")
+
+    def play(self):
+        if not self.has_animation:
+            return
+        if self._anim_p is None or self._anim_p >= 1.0:
+            self.set_progress(0.0)
+        self._anim_timer.start()
+        self.play_btn.setText("⏸ Pause")
+
+    def pause(self):
+        self._anim_timer.stop()
+        self.play_btn.setText("▶ Animate")
+
+    def toggle_animation(self):
+        self.pause() if self.playing else self.play()
+
+    def stop_animation(self):
+        if self._anim_p is None:
+            return
+        self._end_animation()
+        self.view.rebuild()
+        self._update_status()
+        self.molecule_changed.emit()
+        self.selection_changed.emit()
+
+    def _anim_tick(self):
+        from .rxanim import DURATION
+        speed = self.speed_combo.currentData() or 1.0
+        p = self._anim_p + 0.033 * speed / DURATION
+        if p >= 1.0:
+            if self.loop_btn.isChecked():
+                p = 0.0
+            else:
+                self.set_progress(1.0)
+                self.pause()
+                return
+        self.set_progress(p)
+
     # ------------------------------------------------------------- molecule
     def set_molecule(self, mol):
+        if getattr(self, "_anim_p", None) is not None or \
+                getattr(self, "_anim_timer", None) is not None:
+            self._end_animation(restore=False)
         self.mol = mol
         self.selected = None
         self.view._zoom = 1.0
@@ -598,6 +730,10 @@ class Viewer3D(QWidget):
         self.join_btn.setEnabled(editable)
         self.del_btn.setEnabled(editable)
         self._sync_crystal_controls()
+        if mol.reaction and mol.anim is None:
+            from . import reactions
+            reactions.attach_animation(mol)
+        self._sync_anim_controls()
         self._update_status()
         self.view.rebuild()
         self.molecule_changed.emit()

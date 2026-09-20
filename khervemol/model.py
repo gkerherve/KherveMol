@@ -816,6 +816,10 @@ class Molecule:
         #: (text, pos, size Å, color, bold) or "arrow" (p1, p2, color,
         #: double, size)
         self.notes = [dict(n) for n in notes] if notes else None
+        #: a reaction scene's equation (persisted) and its film
+        #: (`rxanim.Animation`, rebuilt from the equation, not persisted)
+        self.reaction = None
+        self.anim = None
         self.name = name
         self.label = label or name
         self.az = DEFAULT_AZ if az is None else az
@@ -831,10 +835,12 @@ class Molecule:
         self.members = {"0,0,0": list(range(len(self.atoms)))}
 
     def clone(self):
-        return Molecule(self.atoms, self.bonds, self.name, self.label,
-                        self.az, self.el, self.bond, self.rscale,
-                        self.crystal, self.edges, self.cells, self.tilts,
-                        self.colors, self.poly, self.notes)
+        c = Molecule(self.atoms, self.bonds, self.name, self.label,
+                     self.az, self.el, self.bond, self.rscale,
+                     self.crystal, self.edges, self.cells, self.tilts,
+                     self.colors, self.poly, self.notes)
+        c.reaction, c.anim = self.reaction, self.anim
+        return c
 
     # ------------------------------------------------------ lattice state
     @property

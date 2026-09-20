@@ -273,6 +273,16 @@ formulas (`H2O`, `ethanol`, `NH4+`, `SO4^2-`), an element (`Fe`, `Na+`) or
   drawing that many copies, with plus signs, the arrow (double for ⇌) and the
   formula under each species. Rotate and zoom as usual; the scene is
   read-only.
+- **Animate** (the row under the 3D view) plays the reaction as a film:
+  the reactants approach and pack together, their atoms travel to the
+  product positions while the reactant bonds break and the product bonds
+  form (half-way through the middle phase), and the products separate.
+  KherveMol decides which atom becomes which by keeping as many bonds as
+  possible, then keeping neighbours together, then the shortest trips — so an
+  ethene + H₂ → ethane film keeps the C–C and four C–H bonds and only moves
+  the two new hydrogens. Drag the slider to scrub, pause, loop, or change the
+  speed; **■ Equation** returns to the equation with its arrow. (Fractional
+  coefficients such as ½ O₂ have no film.)
 - **Reaction ▸ Classic reactions** and the tree's *Reactions* section hold 36
   examples: combustion, photosynthesis, Haber and contact processes,
   neutralisation, esterification, thermite, and more.

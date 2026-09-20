@@ -253,6 +253,12 @@ the table shows any element that differs.</li>
 <li>The scene puts the molecules left to right (a coefficient up to 6 draws
 that many copies), with plus signs, the arrow (double for ⇌) and the formula
 under each species. It is read-only; rotate and zoom as usual.</li>
+<li><b>Animate</b> (row under the 3D view) plays the reaction as a film:
+reactants approach, their atoms travel to the product positions as bonds
+break and form, and the products separate. Atoms are matched to keep as many
+bonds as possible. Scrub with the slider, pause, loop, or change the speed;
+<b>■ Equation</b> returns to the static scene. (No film for fractional
+coefficients.)</li>
 <li><b>Reaction ▸ Classic reactions</b> holds 36 examples — combustion,
 photosynthesis, Haber and contact processes, neutralisation, esterification,
 thermite…</li>

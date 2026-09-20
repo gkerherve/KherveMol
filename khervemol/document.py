@@ -43,6 +43,7 @@ def mol_to_dict(mol):
         "bonds": [list(b) for b in mol.bonds],
         "edges": edges,
         "notes": [_note_to_dict(n) for n in mol.notes] if mol.notes else None,
+        "reaction": mol.reaction,
         "cells": list(mol.cells),
         "tilts": {k: list(v) for k, v in mol.tilts.items()},
         "colors": dict(mol.colors),
@@ -65,7 +66,7 @@ def mol_from_dict(d):
     edges = None
     if d.get("edges"):
         edges = [(tuple(e[0]), tuple(e[1]), e[2]) for e in d["edges"]]
-    return model.Molecule(
+    mol = model.Molecule(
         atoms=d.get("atoms", []), bonds=d.get("bonds", []),
         name=d.get("name", "custom"), label=d.get("label"),
         az=d.get("az"), el=d.get("el"), bond=d.get("bond"),
@@ -74,6 +75,8 @@ def mol_from_dict(d):
         colors=d.get("colors"), poly=d.get("poly", False),
         notes=[_note_from_dict(n) for n in d["notes"]] if d.get("notes")
         else None)
+    mol.reaction = d.get("reaction")
+    return mol
 
 
 def save(path, mol, sketch_atoms, sketch_bonds):

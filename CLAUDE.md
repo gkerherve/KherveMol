@@ -199,6 +199,19 @@ module and import.
                      coefficients, `+`, arrow (double for ⇌) and formulas;
                      `EXAMPLES` = 36 classics (a test balances and lays out
                      every one).
+  - `rxanim.py`    — reaction **animation** (Qt-free): `map_atoms` pairs each
+                     reactant atom with a product atom of the same element
+                     (seed by neighbourhood signature + distance, then swap
+                     hill-climbing on: bonds kept, neighbours in the same
+                     product molecule, least travel); `Animation` keyframes
+                     A spread → B packed → C products packed → D spread, bonds
+                     switch reactant→product at p=0.5; `apply(mol,p)` mutates
+                     the scene (reactant atoms only), `restore` brings the
+                     static equation back. Built by `reactions._animation`
+                     (None for fractional coefficients); `Molecule.reaction`
+                     (persisted) lets `reactions.attach_animation` rebuild it
+                     after a load. `Viewer3D` has the Animate row (play /
+                     scrub / speed / loop).
   - `entries.py`   — every library leaf is a `(kind, value)` pair
                      (`model|compound|smiles|crystal|surface|nano|reaction`);
                      `build` makes the `Molecule`, `sections()` feeds the
@@ -555,7 +568,7 @@ stackable crystals, so a new entry is covered automatically.
 - 2D sketch → 3D without RDKit: write SMILES from the sketch graph so
   `smiles.from_smiles` can embed it (only the reverse direction is offline
   today).
-- Reaction animation (atom-mapped interpolation reactants → products).
+- Reaction film: curved atom paths and bond fade instead of a hard switch.
 - Measure tool (bond lengths / angles); multiple molecules per document.
 
 ## Commit / push policy

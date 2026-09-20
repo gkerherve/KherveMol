@@ -29,13 +29,13 @@ import re
 from dataclasses import dataclass
 from fractions import Fraction
 
-from . import chem, compounds, elements, smiles
+from . import chem, compounds, elements, rxanim, smiles
 from .crystal import BuildError
 from .model import Molecule
 
 #: a coefficient up to this draws that many copies of the molecule side
 #: by side; above it (or for a fraction) a numeral is kept
-REPEAT_MAX = 6
+REPEAT_MAX = 8
 #: most atoms a reaction scene may hold
 MAX_ATOMS = 400
 
@@ -334,6 +334,7 @@ def layout(rx, label=None):
               default=0.0) - 1.0
 
     atoms, bonds, notes = [], [], []
+    drawn = []                  # (side, compound, oriented points, kekulé)
     x = 0.0
 
     def text(s, x0, z, sz, color="#22303c", bold=True):
@@ -369,6 +370,7 @@ def layout(rx, label=None):
                     atoms.append([a[0], p[0] + dx, p[1], p[2]])
                 for bi, bj, bo in kek:
                     bonds.append([bi + base, bj + base, bo])
+                drawn.append((side_idx, comp, pts, kek))
                 w = hi - lo
                 name = term.label
                 text(name, x + w / 2 - _text_width(name, size * 0.6) / 2,
@@ -383,6 +385,8 @@ def layout(rx, label=None):
     m = Molecule(atoms, bonds, name="reaction", label=label or rx.equation,
                  az=0.0, el=math.radians(8.0), bond=1.4, rscale=0.8,
                  crystal=True, notes=notes)
+    m.reaction = rx.source
+    m.anim = _animation(rx, drawn)
     # centre the scene on its middle so it turns about it
     if m.atoms:
         cx = (min(a[1] for a in m.atoms) + max(a[1] for a in m.atoms)) / 2
@@ -396,6 +400,67 @@ def layout(rx, label=None):
                     p = n[key]
                     n[key] = (p[0] - cx, p[1], p[2] - cz)
     return m
+
+
+def _side(copies, gap, shift):
+    """A `rxanim.Side` from drawn copies laid in a row *gap* apart, centred
+    on x = *shift*; returns it with the row's width."""
+    els, bonds, mols, pos = [], [], [], []
+    cursor = 0.0
+    rows = []
+    for k, (_s, comp, pts, kek) in enumerate(copies):
+        lo = min(p[0] for p in pts)
+        hi = max(p[0] for p in pts)
+        base = len(els)
+        els += [a[0] for a in comp.atoms]
+        mols += [k] * len(comp.atoms)
+        bonds += [(i + base, j + base, o) for i, j, o in kek]
+        rows.append((cursor - lo, pts))
+        cursor += hi - lo + gap
+    width = max(0.0, cursor - gap)
+    for dx, pts in rows:
+        pos += [(p[0] + dx - width / 2 + shift, p[1], p[2]) for p in pts]
+    return els, bonds, mols, pos, width
+
+
+def _animation(rx, drawn):
+    """The `rxanim.Animation` of a laid-out reaction, or None when the
+    drawn atoms of the two sides differ (a fractional coefficient)."""
+    left = [d for d in drawn if d[0] == 0]
+    right = [d for d in drawn if d[0] == 1]
+    if not left or not right:
+        return None
+    cr = _side(left, 1.2, 0.0)
+    cp = _side(right, 1.2, 0.0)
+    if sorted(cr[0]) != sorted(cp[0]):
+        return None
+    sr = _side(left, 2.6, 0.0)
+    sp = _side(right, 2.6, 0.0)
+    x0 = max(sr[4], sp[4]) / 2 + max(cr[4], cp[4]) / 2 + 1.0
+    ar = _side(left, 2.6, -x0)
+    dp = _side(right, 2.6, x0)
+    reac = rxanim.Side(cr[0], cr[1], cr[2], ar[3], cr[3])
+    prod = rxanim.Side(cp[0], cp[1], cp[2], dp[3], cp[3])
+    return rxanim.build(reac, prod, rx.equation)
+
+
+def attach_animation(mol):
+    """Give a reaction scene loaded from a file its animation back (the
+    film is regenerated from ``mol.reaction``). Returns True on success."""
+    if mol.anim is not None:
+        return True
+    if not mol.reaction:
+        return False
+    try:
+        rx = solve(mol.reaction, balance_it=False)
+        fresh = layout(rx)
+    except (BuildError, ValueError, ZeroDivisionError):
+        return False
+    if fresh.anim is None:
+        return False
+    fresh.anim.bind(mol)
+    mol.anim = fresh.anim
+    return True
 
 
 def reaction_model(text, balance_it=True):
