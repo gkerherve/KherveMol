@@ -18,7 +18,7 @@ KherveCAD's Qt-free chemistry modules and needs no RDKit either.
 - Run via `python KherveMol.py` or `python -m khervemol`.
 - Crash log: `%TEMP%/khervemol_crash.log`.
 - **Windows release**: `powershell -ExecutionPolicy Bypass -File
-  .uild_release.ps1` writes `khervemol/VERSION` (a frozen build has no
+  .\build_release.ps1` writes `khervemol/VERSION` (a frozen build has no
   `.git`, so `_version.get_version()` reads that file first), runs
   `KherveMol.spec` (PyInstaller one-folder, PyQt5 + qtawesome + rdkit) into
   `dist/KherveMol/`, zips it, and — if Inno Setup 6 is installed — builds
