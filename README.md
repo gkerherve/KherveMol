@@ -35,6 +35,12 @@ pure-Python vector renderer where OpenGL is unavailable. RDKit is optional.
 - **Graphene, nanotubes & fullerenes** — graphene sheets (AA / AB / ABC,
   twisted bilayers, vacancies, doping), nanoribbons, quantum dots,
   graphite surfaces, (n,m) nanotubes and C20 / C60 / C70… cages.
+- **Polymers** — 40 presets (PE, PVC, PTFE, PMMA, nylon, PET, Kevlar,
+  silicone…) or your own SMILES repeat unit, repeated n times.
+- **Icon toolbars** — every library as a split button (builder + list) and
+  every drawing tool (2D sketch, 3D atom / bond / delete, conversion,
+  reaction film) one click away. Menus, toolbar and library tree list the
+  same entries.
 - **Reactions** — type `CH4 + O2 -> CO2 + H2O`; KherveMol balances atoms
   and charge and lays the balanced reaction out in 3D, with the molecules,
   coefficients, plus signs and arrow — then press **Animate** to watch the atoms

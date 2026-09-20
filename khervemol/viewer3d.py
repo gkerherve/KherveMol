@@ -674,10 +674,12 @@ class Viewer3D(QWidget):
             self.set_progress(0.0)
         self._anim_timer.start()
         self.play_btn.setText("⏸ Pause")
+        self.view_changed.emit()
 
     def pause(self):
         self._anim_timer.stop()
         self.play_btn.setText("▶ Animate")
+        self.view_changed.emit()
 
     def toggle_animation(self):
         self.pause() if self.playing else self.play()

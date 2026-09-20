@@ -17,7 +17,9 @@ from PyQt5.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox,
                              QDoubleSpinBox, QFormLayout, QHBoxLayout, QLabel,
                              QLineEdit, QPlainTextEdit, QSpinBox, QVBoxLayout)
 
-from . import crystal_library, reactions, surface
+from urllib.parse import quote
+
+from . import crystal_library, polymers, reactions, smiles, surface
 from .crystal import BuildError
 
 
@@ -312,6 +314,94 @@ class NanoDialog(_Dialog):
             p = [f"kind={self.fuller.currentText()}"]
         title = self.type.currentText()
         return "nano", f"{kind}?" + "&".join(p), title
+
+
+class PolymerDialog(_Dialog):
+    """A polymer chain: a preset (or your own SMILES repeat unit) repeated
+    n times between two end caps."""
+
+    def __init__(self, parent=None, key="polyethylene"):
+        super().__init__("Polymer builder", parent)
+        self.setMinimumWidth(520)
+        self.combo = QComboBox()
+        self.combo.setMaxVisibleItems(24)
+        for cat in polymers.CATEGORIES:
+            for k, v in polymers.PRESETS.items():
+                if v[3] == cat:
+                    self.combo.addItem(v[0], k)
+        self.combo.addItem("Custom repeat unit…", "custom")
+        self.combo.setCurrentIndex(max(0, self.combo.findData(key)))
+        self.form.addRow("Polymer", self.combo)
+        self.unit = QLineEdit()
+        self.unit.setToolTip(
+            "SMILES of one repeat unit: its first atom bonds to the previous "
+            "unit and its last atom to the next — CC for polyethylene, "
+            "CC(Cl) for PVC")
+        self.form.addRow("Repeat unit", self.unit)
+        row = QHBoxLayout()
+        self.head, self.tail = QLineEdit(), QLineEdit()
+        for lab, w in (("start cap", self.head), ("end cap", self.tail)):
+            w.setPlaceholderText("H")
+            w.setMaximumWidth(110)
+            row.addWidget(QLabel(lab))
+            row.addWidget(w)
+        row.addStretch(1)
+        self.form.addRow("End groups", row)
+        self.n = self._spin(1, 200, 8)
+        self.form.addRow("Repeat units (n)", self.n)
+        self.combo.currentIndexChanged.connect(self._pick)
+        for w in (self.unit, self.head, self.tail):
+            w.textChanged.connect(self._update)
+        self.n.valueChanged.connect(self._update)
+        self._pick()
+
+    def _pick(self, *_):
+        key = self.combo.currentData()
+        custom = key == "custom"
+        for w in (self.unit, self.head, self.tail):
+            w.setEnabled(custom)
+        if not custom:
+            _n, unit, n, _c, (head, tail) = polymers.PRESETS[key]
+            for w, text in ((self.unit, unit), (self.head, head),
+                            (self.tail, tail)):
+                w.blockSignals(True)
+                w.setText(text)
+                w.blockSignals(False)
+            self.n.setValue(n)
+        elif not self.unit.text():
+            self.unit.setText("CC(C)")
+        self._update()
+
+    def _update(self, *_):
+        unit, head, tail = (self.unit.text().strip(), self.head.text().strip(),
+                            self.tail.text().strip())
+        try:
+            text = polymers.chain_smiles(unit, self.n.value(), head, tail)
+            atoms, bonds = smiles.parse_smiles(text)
+            atoms, bonds = smiles.add_hydrogens(atoms, bonds)
+            if len(atoms) > smiles.MAX_ATOMS:
+                raise polymers.PolymerError(
+                    f"{len(atoms)} atoms is more than the builder takes "
+                    f"({smiles.MAX_ATOMS}) — at most "
+                    f"{polymers.max_units(unit, head, tail)} units.")
+            self.summary.setText(
+                f"{smiles.formula_of(text)} — {len(atoms)} atoms, "
+                f"{self.n.value()} × {unit}")
+            self.ok_btn.setEnabled(True)
+        except (polymers.PolymerError, smiles.SmilesError, ValueError,
+                KeyError) as exc:
+            self.summary.setText(f"⚠ {exc}")
+            self.ok_btn.setEnabled(False)
+
+    def entry(self):
+        key = self.combo.currentData()
+        n = self.n.value()
+        if key != "custom":
+            return "polymer", f"{key}?n={n}", self.combo.currentText()
+        value = (f"custom?unit={quote(self.unit.text().strip(), safe='')}"
+                 f"&n={n}&head={quote(self.head.text().strip(), safe='')}"
+                 f"&tail={quote(self.tail.text().strip(), safe='')}")
+        return "polymer", value, "Custom polymer"
 
 
 class ReactionDialog(_Dialog):

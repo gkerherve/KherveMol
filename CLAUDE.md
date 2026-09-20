@@ -219,7 +219,22 @@ module and import.
                      falls back to `chem.smiles_model`. Values with options are
                      query strings (`cu?cells=2,2,2`, `si:111?layers=4`,
                      `graphene?width=3&layers=2`).
-  - `builders_ui.py` — Crystal / Surface / Nano / Reaction dialogs; each has
+  - `polymers.py`  — Qt-free polymer chains: `PRESETS` (40 repeat units as
+                     SMILES fragments + end caps, five families),
+                     `chain_smiles(unit, n, head, tail)`, `build_chain`,
+                     `max_units`. A polymer is just a long molecule built by
+                     `smiles`; `entries` kind `polymer` (`pvc?n=6`,
+                     `custom?unit=…&n=…`).
+  - `maintools.py` — the two **toolbars**: top row = files + a split button
+                     per library (face = builder, arrow = the same menu the
+                     menubar shows, via `MainWindow._menus`), second row =
+                     drawing tools (2D tools synced to `Editor2D.tool`,
+                     element combo, 3D add / order / bond / delete / labels /
+                     lock, 3D↔2D, film). `MainWindow._sync_tool_states`
+                     enables what applies. Menus are built from
+                     `entries.sections()` by `_add_groups`, so menus, tree
+                     and toolbar can never disagree.
+  - `builders_ui.py` — Crystal / Surface / Nano / Polymer / Reaction dialogs; each has
                      `entry()` → `(kind, value, label)`.
   - `glview.py`, `glshaders.py` — the **OpenGL viewer**: `Scene` (CPU layout,
                      projection identical to `model._proj`, hit-testing,

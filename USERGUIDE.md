@@ -228,6 +228,45 @@ to filter by name, formula or family, click an entry to preview it in 3D,
 then **Build in 3D** to load it (and mirror it into the 2D sketch where
 that makes sense).
 
+## Toolbars
+
+Two rows of icon buttons hold every way to make a structure.
+
+**Top row** — file operations (New, Open, Save, PNG, SVG), the **Explorer**
+and **SMILES**, then one split button per library: **Molecules**,
+**Polymers**, **Crystals**, **Surfaces**, **Carbon** and **Reactions**.
+Click the icon to open that library's builder (the Explorer for
+Molecules); click the arrow to pick straight from the list. These are the
+same lists as the menus and the library tree. Then Properties, AI Chat and
+the Guide.
+
+**Second row** — drawing tools:
+
+- **2D**: Draw, Move, Atom and Erase for the sketch (picking one switches to
+  the 2D tab), and Clear.
+- **Element**: the element drawn or added, in both views (any element from
+  the periodic table dock also lands here).
+- **3D**: Add atom (bonds the chosen element onto the selected atom),
+  Single / Double / Triple bond order, Bond (join the two selected atoms),
+  Delete, Labels and Lock lengths.
+- **3D → 2D** and **2D → 3D** convert between the views.
+- **Animate** / **Equation** play a reaction film and return to the equation.
+
+Buttons grey out when they do not apply — the 3D editing tools on a crystal
+or reaction scene, the film buttons on anything but a reaction.
+
+## Polymers
+
+**Polymer ▸ Polymer builder…** (Ctrl+Shift+P) repeats a unit *n* times. Pick
+one of 40 presets — polyethylene, polypropylene, PVC, PTFE, polystyrene,
+PMMA, PAN, rubbers, PEO, PET, PLA, nylon 6 and 6,6, Kevlar, polyurethane,
+polycarbonate, silicone, polythiophene… — or choose *Custom repeat unit…* and
+type a SMILES fragment whose first atom bonds to the previous unit and whose
+last atom bonds to the next (`CC(Cl)` is PVC). The ends are capped with
+hydrogen unless you give end groups. The result is an ordinary molecule you
+can rotate, edit and export; up to about 400 atoms (the summary tells you
+when *n* is too big).
+
 ## Crystals, surfaces and carbon nanostructures
 
 The **Crystal** menu opens three builders (their entries are also in the

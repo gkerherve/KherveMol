@@ -213,6 +213,26 @@ nanostructure and reaction. Type in the search box to filter by name,
 formula or family, pick an entry to preview it in 3D, then <b>Build in
 3D</b>.</p>
 
+<h3>Toolbars</h3>
+<p>Two rows of icon buttons hold every way to make a structure. The
+<b>top row</b> has the file operations, the Explorer and SMILES, then one
+split button per library — <b>Molecules, Polymers, Crystals, Surfaces,
+Carbon, Reactions</b>: click the icon for that library's builder, the arrow
+to pick straight from the list (the same lists as the menus and the tree).
+The <b>second row</b> holds the drawing tools: <b>2D</b> Draw / Move / Atom /
+Erase and Clear, the active <b>Element</b>, and the <b>3D</b> builder — Add
+atom, Single / Double / Triple, Bond, Delete, Labels, Lock — plus 3D → 2D,
+2D → 3D and the reaction <b>Animate</b> / <b>Equation</b>. Buttons grey out
+when they do not apply.</p>
+
+<h3>Polymers</h3>
+<p><b>Polymer ▸ Polymer builder…</b> (Ctrl+Shift+P) repeats a unit <i>n</i>
+times: 40 presets (PE, PP, PVC, PTFE, PS, PMMA, rubbers, PEO, PET, PLA,
+nylons, Kevlar, silicone, polythiophene…) or a custom SMILES repeat unit
+(first atom bonds to the previous unit, last atom to the next — e.g.
+<code>CC(Cl)</code> for PVC). Ends are hydrogen-capped unless you give end
+groups. Up to about 400 atoms.</p>
+
 <h3>Crystals, surfaces and carbon nanostructures</h3>
 <p>The <b>Crystal</b> menu opens three builders (their entries are also in
 the library tree):</p>

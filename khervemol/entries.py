@@ -13,6 +13,7 @@ smiles     a SMILES string                              RDKit, else `chem`
 crystal    ``key`` or ``key?cells=2,2,2``               `chem`
 surface    ``key:hkl`` or ``key:hkl?repeat=6,6&layers=4``  `chem`
 nano       ``graphene?width=3&layers=2`` …              `chem`
+polymer    ``key?n=8`` or ``custom?unit=CC(Cl)&n=6``    `polymers`
 reaction   an equation, ``2 H2 + O2 -> 2 H2O``          `reactions`
 ========== ============================================ ==============
 
@@ -26,15 +27,15 @@ the Free Software Foundation, either version 3 of the License, or
 
 from urllib.parse import parse_qs
 
-from . import (chem, compounds, crystal_library, library, rdkit_io, reactions,
-               surface)
+from . import (chem, compounds, crystal_library, library, polymers, rdkit_io,
+               reactions, surface)
 from .crystal import BuildError
 from .smiles import SmilesError
 
 #: kinds whose result is a fixed lattice / scene rather than an editable
 #: molecule
 KINDS = ("model", "compound", "smiles", "crystal", "surface", "nano",
-         "reaction")
+         "polymer", "reaction")
 
 
 def _split(value):
@@ -95,9 +96,36 @@ def build(kind, value, label=None):
             else:
                 kw[k] = v
         return chem.nano_model(head, **kw)
+    if kind == "polymer":
+        return build_polymer(value)
     if kind == "reaction":
         return reactions.reaction_model(value)[0]
     raise BuildError(f"Unknown entry kind '{kind}'.")
+
+
+def build_polymer(value):
+    """A polymer chain: a preset key (``pvc?n=6``) or a custom repeat unit
+    (``custom?unit=CC(Cl)&n=6&head=&tail=``)."""
+    key, p = _split(value)
+    try:
+        if key == "custom":
+            unit, head, tail = p.get("unit", ""), p.get("head", ""), \
+                p.get("tail", "")
+            name = "Custom polymer"
+            n = int(p.get("n", 4))
+        else:
+            name, unit, n0, _cat, (head, tail) = polymers.preset(key)
+            n = int(p.get("n", n0))
+        comp = polymers.build_chain(unit, n, head, tail)
+    except KeyError:
+        raise BuildError(f"No polymer '{key}'.")
+    except ValueError as exc:
+        raise BuildError(str(exc))
+    short = name.split(" (")[0]
+    mol = chem.to_model(comp, name=f"polymer:{key}",
+                        label=f"{short} — {n} repeat units", rscale=0.8,
+                        bond=1.4)
+    return mol
 
 
 def build_smiles(text, label=None):
@@ -239,6 +267,15 @@ def sections():
               for g, rows in _NANO]
     total = sum(len(g[1]) for g in groups)
     out.append((f"Graphene, nanotubes & fullerenes — {total}", groups))
+    # polymers
+    groups = []
+    for cat in polymers.CATEGORIES:
+        rows = [(v[0], ("polymer", k)) for k, v in polymers.PRESETS.items()
+                if v[3] == cat]
+        if rows:
+            groups.append((cat, rows))
+    total = sum(len(g[1]) for g in groups)
+    out.append((f"Polymers — {total}", groups))
     # reactions
     rows = [(name, ("reaction", eq)) for name, eq in reactions.EXAMPLES.items()]
     out.append((f"Reactions — {len(rows)}", [("Classic reactions", rows)]))

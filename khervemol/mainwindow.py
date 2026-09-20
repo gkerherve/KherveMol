@@ -18,7 +18,7 @@ from PyQt5.QtWidgets import (QAction, QActionGroup, QApplication, QDialog,
                              QTabWidget, QTreeWidget, QTreeWidgetItem,
                              QVBoxLayout)
 
-from . import (__version__, builders_ui, crystal_library, dnd, document,
+from . import (__version__, builders_ui, maintools, crystal_library, dnd, document,
                elements, entries, help as help_mod, icons, library, model,
                molrepr, periodic, rdkit_io, reactions, style, supercell,
                svgexport)
@@ -120,7 +120,7 @@ class MainWindow(QMainWindow):
             top = self._tree_header(title)
             for group, rows in groups:
                 self._tree_group(top, group, rows, False, _entry_color)
-            top.setExpanded(n < 5)
+            top.setExpanded(n < 6)
         self.tree.itemActivated.connect(self._tree_load)
         self.tree.itemDoubleClicked.connect(self._tree_load)
         lib_dock.setWidget(self.tree)
@@ -182,8 +182,26 @@ class MainWindow(QMainWindow):
         self.ai_dock.hide()             # opened on demand from View / toolbar
 
     # --------------------------------------------------------------- menus
+    def _add_groups(self, parent, groups):
+        """One scrollable submenu per group, one action per entry — the
+        same ``entries.sections()`` the library tree is built from, so the
+        menus and the tree always list the same things."""
+        for group, rows in groups:
+            sub = parent.addMenu(group.replace("&", "&&"))
+            sub.setStyleSheet("QMenu { menu-scrollable: 1; }")
+            for label, (kind, value) in rows:
+                act = sub.addAction(label.replace("&", "&&"))
+                tip = entries.smiles_of(kind, value)
+                if tip or kind == "reaction":
+                    act.setToolTip(tip or value)
+                act.triggered.connect(
+                    lambda _=False, k=kind, v=value, n=label:
+                    self.load_entry(k, v, n))
+
     def _build_menus(self):
         mb = self.menuBar()
+        sec = {t.split(" —")[0]: g for t, g in entries.sections()}
+        self._menus = {}
 
         m_file = mb.addMenu("&File")
         self._act(m_file, "New", self.new_document, "Ctrl+N", "mdi.file-outline")
@@ -211,14 +229,18 @@ class MainWindow(QMainWindow):
         self._act(m_mol, "Properties…", self.show_properties, "Ctrl+I",
                   "mdi.information-outline")
         m_mol.addSeparator()
+        self._add_groups(m_mol, sec["Molecules"])
+        m_mol.addSeparator()
+        classic = m_mol.addMenu("Classic 3D models")
         for title, keys in library.CATEGORIES:
-            if title == "Crystal structures":
+            if title in ("Crystal structures", "Lattice systems"):
                 continue
-            sub = m_mol.addMenu(title)
+            sub = classic.addMenu(title)
             for key in keys:
                 act = QAction(library.label(key), self)
                 act.triggered.connect(lambda _=False, k=key: self.load_model(k))
                 sub.addAction(act)
+        self._menus["molecules"] = m_mol
 
         m_xtal = mb.addMenu("&Crystal")
         self._act(m_xtal, "Crystal builder…", self.open_crystal_builder,
@@ -228,16 +250,12 @@ class MainWindow(QMainWindow):
         self._act(m_xtal, "Graphene, nanotubes & fullerenes…",
                   self.open_nano_builder, "Ctrl+Shift+G", "mdi.hexagon-multiple")
         m_xtal.addSeparator()
-        for cat in crystal_library.CATEGORIES:
-            sub = m_xtal.addMenu(cat)
-            sub.setStyleSheet("QMenu { menu-scrollable: 1; }")
-            for c in crystal_library.LIBRARY.values():
-                if c.category == cat:
-                    act = QAction(c.name, self)
-                    act.triggered.connect(
-                        lambda _=False, k=c.key, n=c.name:
-                        self.load_entry("crystal", k, n))
-                    sub.addAction(act)
+        self._add_groups(m_xtal, sec["Crystals"])
+        m_surf = m_xtal.addMenu("Surfaces")
+        self._add_groups(m_surf, sec["Surfaces"])
+        m_nano = m_xtal.addMenu("Graphene, nanotubes && fullerenes")
+        self._add_groups(m_nano, sec["Graphene, nanotubes & fullerenes"])
+        self._menus.update(crystals=m_xtal, surfaces=m_surf, carbon=m_nano)
         classic = m_xtal.addMenu("Classic crystal models")
         for title, keys in library.CATEGORIES:
             if title not in ("Crystal structures", "Lattice systems"):
@@ -259,19 +277,19 @@ class MainWindow(QMainWindow):
         self._act(m_xtal, "Reset colours", self.viewer.reset_colors)
         m_xtal.aboutToShow.connect(self._sync_crystal_menu)
 
+        m_poly = mb.addMenu("&Polymer")
+        self._act(m_poly, "Polymer builder…", self.open_polymer_builder,
+                  "Ctrl+Shift+P", "mdi.link-variant")
+        m_poly.addSeparator()
+        self._add_groups(m_poly, sec["Polymers"])
+        self._menus["polymers"] = m_poly
+
         m_rx = mb.addMenu("&Reaction")
         self._act(m_rx, "Reaction builder…", self.open_reaction_builder,
                   "Ctrl+R", "mdi.flask-outline")
         m_rx.addSeparator()
-        sub = m_rx.addMenu("Classic reactions")
-        sub.setStyleSheet("QMenu { menu-scrollable: 1; }")
-        for name, eq in reactions.EXAMPLES.items():
-            act = QAction(name, self)
-            act.setToolTip(eq)
-            act.triggered.connect(
-                lambda _=False, e=eq, n=name:
-                self.load_entry("reaction", e, n))
-            sub.addAction(act)
+        self._add_groups(m_rx, sec["Reactions"])
+        self._menus["reactions"] = m_rx
 
         m_struct = mb.addMenu("&Structure")
         self._act(m_struct, "Flatten 3D → 2D sketch", self.flatten_to_2d)
@@ -346,26 +364,53 @@ class MainWindow(QMainWindow):
         return act
 
     def _build_toolbar(self):
-        tb = self.addToolBar("Main")
-        tb.setMovable(False)
-        self._tb_act(tb, "New", self.new_document, "mdi.file-outline")
-        self._tb_act(tb, "Open", self.open_dialog, "mdi.folder-open")
-        self._tb_act(tb, "Save", self.save, "mdi.content-save")
-        self._tb_act(tb, "Export", self.export_png, "mdi.image")
-        tb.addSeparator()
-        self._tb_act(tb, "Explorer", self.open_explorer, "mdi.magnify")
-        self._tb_act(tb, "Benzene", lambda: self.load_model("benzene"),
-                     "mdi.hexagon-outline")
-        self._tb_act(tb, "Water", lambda: self.load_model("water"),
-                     "mdi.water")
-        self._tb_act(tb, "Diamond", lambda: self.load_model("diamond"),
-                     "mdi.diamond-stone")
-        tb.addSeparator()
-        ai_toggle = self.ai_dock.toggleViewAction()
-        ai_toggle.setIcon(icons.icon("mdi.robot-outline"))
-        ai_toggle.setToolTip("AI Chat — ask chemistry questions, draw molecules")
-        tb.addAction(ai_toggle)
-        self._tb_act(tb, "Guide", self.show_guide, "mdi.help-circle-outline")
+        maintools.build(self)
+        self.viewer.molecule_changed.connect(self._sync_tool_states)
+        self.viewer.view_changed.connect(self._sync_tool_states)
+        self.viewer.structure_changed.connect(self._sync_tool_states)
+        self.viewer.selection_changed.connect(self._sync_tool_states)
+        self.viewer.order_combo.currentIndexChanged.connect(
+            self._sync_order_actions)
+        self.tabs.currentChanged.connect(self._sync_tool_states)
+        self._sync_tool_states()
+
+    # ----------------------------------------------------- toolbar helpers
+    def use_sketch_tool(self, key):
+        """A 2D tool was picked on the toolbar: switch to the sketch."""
+        self.sketch.set_tool(key)
+        self.tabs.setCurrentIndex(1)
+
+    def add_active_atom(self):
+        self.tabs.setCurrentIndex(0)
+        self.viewer.add_active()
+
+    def set_bond_order_tool(self, index):
+        self.viewer.order_combo.setCurrentIndex(index)
+
+    def _sync_order_actions(self, index):
+        if 0 <= index < len(self._order_actions):
+            self._order_actions[index].setChecked(True)
+
+    def viewer_bond_selected(self):
+        self.tabs.setCurrentIndex(0)
+        self.viewer.bond_selected(self.viewer.order)
+
+    def _sync_tool_states(self, *_):
+        """Grey out what does not apply: the 3D editing tools on a lattice
+        or reaction scene, the film buttons on anything but a reaction, and
+        keep the 2D tool highlight in step with the sketch."""
+        v = self.viewer
+        editable = v.editable
+        for act in self._edit_actions:
+            act.setEnabled(editable)
+        self._edit_actions[-2].setEnabled(editable and v.can_bond_selected(
+            v.order))
+        self._play_action.setEnabled(v.has_animation)
+        self._stop_action.setEnabled(v.has_animation and v.animating)
+        self._play_action.setText("Pause" if v.playing else "Animate")
+        act = self._tool_actions.get(self.sketch.tool)
+        if act is not None and not act.isChecked():
+            act.setChecked(True)
 
     def _tb_act(self, tb, text, slot, icon_name):
         act = QAction(icons.icon(icon_name), text, self)
@@ -549,6 +594,13 @@ class MainWindow(QMainWindow):
         self.build_smiles(smiles)
 
     def _on_element_picked(self, el):
+        combo = getattr(self, "tb_element", None)
+        if combo is not None and combo.currentText() != el:
+            i = combo.findText(el)
+            if i >= 0:
+                combo.blockSignals(True)
+                combo.setCurrentIndex(i)
+                combo.blockSignals(False)
         # The periodic-table dock sets the active element for BOTH the 2D
         # sketch and the 3D builder's ＋ button / right-click "Add".
         self.viewer.set_active_element(el)
@@ -632,6 +684,9 @@ class MainWindow(QMainWindow):
 
     def open_nano_builder(self):
         self._run_dialog(builders_ui.NanoDialog(self))
+
+    def open_polymer_builder(self):
+        self._run_dialog(builders_ui.PolymerDialog(self))
 
     def open_reaction_builder(self):
         self._run_dialog(builders_ui.ReactionDialog(self))
