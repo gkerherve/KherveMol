@@ -15,7 +15,7 @@ executed there.
 Security posture: the listener binds to 127.0.0.1 only, and every
 request must carry the random token from the endpoint file, which is
 written user-readable only.  The bridge is off unless the user turns
-it on in Help > Connect to Claude (MCP).
+it on in AI > Connect to Claude (MCP).
 
 Copyright (C) 2026 Gwilherm Kerherve
 
@@ -324,7 +324,7 @@ class McpBridge(QObject):
     def _refuse(self, name: str, reason: str) -> dict:
         self._record(str(name), "refused")
         return {"error": f"Refused: {reason} The user can change this in "
-                         f"Help > Connect to Claude (MCP)."}
+                         f"AI > Connect to Claude (MCP)."}
 
     def _call_tool(self, params: dict) -> dict:
         name = params.get("name")

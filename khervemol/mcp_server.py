@@ -104,7 +104,7 @@ _NOT_RUNNING = (
     "The MCP server drives a live KherveMol window, so the "
     "application must be running with its bridge enabled:\n"
     "  1. Start KherveMol.\n"
-    "  2. Enable Help > Connect to Claude (MCP)...\n"
+    "  2. Enable AI > Connect to Claude (MCP)...\n"
     "Then retry -- no need to restart this MCP connection."
 )
 
@@ -183,7 +183,7 @@ Working rules:
 - A tool error says what to change: fix it, do not retry the same call.
 - Tell the user what you built and which library entry you used; if the \
 library had no match and you used SMILES, say so.
-- The user controls what you may do (Help > Connect to Claude). A \
+- The user controls what you may do (AI > Connect to Claude). A \
 refusal naming an access level is their setting, not a bug -- tell them \
 what you needed rather than working around it.
 """

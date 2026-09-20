@@ -1056,17 +1056,19 @@ def test_http_transport(qapp, win, bridge):
 
 
 # ------------------------------------------------------------ dialog & menu
-def test_install_adds_the_help_action_above_about(qapp, win, state_dir):
+def test_install_adds_the_action_to_the_ai_menu(qapp, win, state_dir):
     from khervemol import mcp_dialog
     bridge = mcp_dialog.install(win)
     assert mcp_dialog.install(win) is bridge          # idempotent
     assert not bridge.is_running()                    # off until enabled
-    help_menu = [a.menu() for a in win.menuBar().actions()
-                 if a.text().replace("&", "") == "Help"][0]
-    texts = [a.text() for a in help_menu.actions()]
-    assert any("Connect to Claude" in t for t in texts)
-    assert texts.index([t for t in texts if "Connect to Claude" in t][0]) \
-        < texts.index([t for t in texts if t.startswith("About")][0])
+    titles = [a.text().replace("&", "") for a in win.menuBar().actions()]
+    assert titles.index("AI") < titles.index("Help")
+    ai_menu = [a.menu() for a in win.menuBar().actions()
+               if a.text().replace("&", "") == "AI"][0]
+    texts = [a.text().replace("&", "") for a in ai_menu.actions()]
+    assert texts[0].startswith("Connect to Claude")   # first, then the chat
+    assert any("AI Chat" in t for t in texts)
+    assert win._menus["ai"] is ai_menu
     assert bridge.parent() is win
 
 

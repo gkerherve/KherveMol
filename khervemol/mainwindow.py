@@ -382,9 +382,17 @@ class MainWindow(QMainWindow):
         m_view.addAction(self._shelf_dock.toggleViewAction())
         self._act(m_view, "Periodic table…", self.show_periodic_table,
                   "Ctrl+T", "mdi.periodic-table")
-        ai_toggle = self.ai_dock.toggleViewAction()
-        ai_toggle.setText("AI Chat")
-        m_view.addAction(ai_toggle)
+        # AI menu: the chat box here, "Connect to Claude (MCP)…" added by
+        # `mcp_dialog.install` (the same place KherveCAD puts it)
+        m_ai = mb.addMenu("&AI")
+        chat = self.ai_dock.toggleViewAction()
+        chat.setText("AI &Chat (needs an API key)")
+        chat.setIcon(icons.icon("mdi.robot-outline"))
+        chat.setShortcut("Ctrl+/")
+        chat.setToolTip("A chat box docked in the window; it needs your own "
+                        "Claude, ChatGPT, Mistral or Ollama key")
+        m_ai.addAction(chat)
+        self._menus["ai"] = m_ai
 
         m_help = mb.addMenu("&Help")
         self._act(m_help, "User Guide", self.show_guide, "F1")

@@ -1,4 +1,4 @@
-"""Control panel for the assistant connection (Help > Connect to Claude).
+"""Control panel for the assistant connection (AI > Connect to Claude).
 
 Shows whether the connection is open and wires Claude Desktop, Claude
 Code and their relatives up to it.
@@ -447,15 +447,21 @@ def bridge_for(window):
     return getattr(window, "_mcp_bridge", None)
 
 
-def _help_menu(window):
+def _menu_named(window, name):
     for act in window.menuBar().actions():
-        if act.text().replace("&", "").strip().lower() == "help":
+        if act.text().replace("&", "").strip().lower() == name:
             return act.menu()
-    return window.menuBar().addMenu("&Help")
+    return None
+
+
+def _ai_menu(window):
+    """The AI menu (where KherveCAD puts the connection too), else Help."""
+    menu = _menu_named(window, "ai") or _menu_named(window, "help")
+    return menu if menu is not None else window.menuBar().addMenu("&AI")
 
 
 def install(window):
-    """Give *window* its 'Connect to Claude (MCP)...' Help-menu action and
+    """Give *window* its 'Connect to Claude (MCP)...' AI-menu action and
     re-open the bridge when the user left it enabled last session.
 
     Call once at the end of ``MainWindow.__init__``.  The bridge itself is
@@ -487,7 +493,7 @@ def install(window):
         dialogs.append(dlg)
         dlg.show()
 
-    action = QAction("Connect to Claude (MCP)\u2026", window)
+    action = QAction("&Connect to Claude (MCP)\u2026", window)
     action.setToolTip("Let Claude Desktop, Claude Code, Cursor and other "
                       "assistants build and edit in this window")
     try:
@@ -496,14 +502,20 @@ def install(window):
     except Exception:                          # noqa: BLE001
         pass
     action.triggered.connect(lambda _=False: open_dialog())
-    menu = _help_menu(window)
+    menu = _ai_menu(window)
     before = None
     for act in menu.actions():
+        # in the AI menu it goes first; in Help it goes above About
+        if menu.title().replace("&", "").lower() == "ai":
+            before = act
+            break
         if act.text().replace("&", "").strip().lower().startswith("about"):
             before = act
             break
     if before is not None:
         menu.insertAction(before, action)
+        if menu.title().replace("&", "").lower() == "ai":
+            menu.insertSeparator(before)
     else:
         menu.addAction(action)
     window._mcp_action = action
@@ -512,7 +524,7 @@ def install(window):
     # the user always knows something can drive the window.
     note = QLabel("Claude: connected")
     note.setStyleSheet("color:#2e7d32; padding:0 6px;")
-    note.setToolTip("An assistant may drive this window (Help > Connect to "
+    note.setToolTip("An assistant may drive this window (AI > Connect to "
                     "Claude). Local only: 127.0.0.1.")
     note.setVisible(False)
     window.statusBar().addPermanentWidget(note)

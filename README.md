@@ -80,7 +80,7 @@ pure-Python vector renderer where OpenGL is unavailable. RDKit is optional.
   drive the live window: search the library, build molecules, crystals,
   surfaces (with adsorbates), nanostructures, polymers and reactions, edit
   atoms and bonds, and look at the result. Local-only, off until you enable
-  it (Help ▸ Connect to Claude).
+  it (AI ▸ Connect to Claude).
 - **`.kmol` save/open** and **PNG export**.
 - Themeable UI shared with the rest of the Kherve family.
 

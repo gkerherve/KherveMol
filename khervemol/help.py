@@ -324,7 +324,7 @@ touched. <b>Help ▸ Check for Updates…</b> runs it on demand; <b>Help ▸ Upd
 Automatically</b> turns it off.</p>
 
 <h3>Connect to Claude (MCP)</h3>
-<p><b>Help ▸ Connect to Claude (MCP)…</b> lets Claude Desktop, Claude Code,
+<p><b>AI ▸ Connect to Claude (MCP)…</b> lets Claude Desktop, Claude Code,
 Cursor and other assistants drive this window: they can search the library,
 build molecules, crystals, surfaces (with an adsorbate), nanostructures,
 polymers and balanced reactions, edit atoms and bonds, change the view and

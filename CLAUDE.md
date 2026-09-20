@@ -535,7 +535,7 @@ module and import.
                      live `MainWindow` (never a modal dialog); `mcp_library.py`
                      has the list / search / resolve helpers; `mcp_hosts.py`
                      writes the config entry into Claude Desktop / Claude Code /
-                     Cursor / …; `mcp_dialog.py` is the Help ▸ Connect to Claude
+                     Cursor / …; `mcp_dialog.py` is the AI ▸ Connect to Claude
                      (MCP)… dialog and `install(window)`. A new tool = a
                      `TOOLS` entry + a `_t_<name>` method (+ a mention in the
                      server `_INSTRUCTIONS`); `tests/test_mcp.py` enforces it.

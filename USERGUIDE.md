@@ -484,7 +484,7 @@ newer GitHub *release* instead and offers its page.
 
 ## Connect to Claude (MCP)
 
-**Help ▸ Connect to Claude (MCP)…** lets an assistant — Claude Desktop, Claude
+**AI ▸ Connect to Claude (MCP)…** lets an assistant — Claude Desktop, Claude
 Code, Cursor, Cline, VS Code, LM Studio — drive the live KherveMol window
 through the Model Context Protocol. Ask *"in KherveMol, show caffeine and give me
 its formula"*, *"build Pt(111) with CO standing on it and render it"* or
