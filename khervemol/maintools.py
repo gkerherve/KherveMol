@@ -1,8 +1,9 @@
 """The main window's toolbars: every way to make a structure, as icons.
 
-Two rows. The top row holds the file operations and every *library* — a
-split button whose face opens the builder (or Explorer) and whose arrow
-lists the same entries the menus and the library tree list. The second
+Two rows of icon-only buttons (names are in the tooltips). The top row
+holds the file operations and every *library* — a button that opens the
+same menu the menubar shows (builder first, then the entries the library
+tree lists). The second
 row holds the *drawing* tools: the 2D sketch tools and element, the 3D
 builder (add an atom, bond order, join, delete, labels), conversion
 between the two views, and the reaction film.
@@ -25,8 +26,10 @@ from . import elements, icons
 def _toolbar(win, title):
     tb = QToolBar(title, win)
     tb.setMovable(False)
-    tb.setIconSize(QSize(16, 16))
-    tb.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
+    tb.setIconSize(QSize(20, 20))
+    # icons only — the label under each icon made the bar tall; the name
+    # is in the tooltip (a button without an icon still shows its text)
+    tb.setToolButtonStyle(Qt.ToolButtonIconOnly)
     win.addToolBar(tb)
     return tb
 
@@ -44,15 +47,16 @@ def _action(win, tb, text, slot, icon_name, tip=None, checkable=False):
 
 
 def _split(win, tb, text, icon_name, slot, menu, tip):
-    """A split button: click = *slot*, arrow = *menu*."""
+    """A menu button: click = the library's menu (its first entry is the
+    builder). *slot* is kept for the tooltip's sake only."""
     btn = QToolButton()
     btn.setText(text)
     btn.setIcon(icons.icon(icon_name))
     btn.setToolTip(tip)
-    btn.setToolButtonStyle(Qt.ToolButtonTextUnderIcon)
-    btn.setPopupMode(QToolButton.MenuButtonPopup)
+    btn.setToolButtonStyle(Qt.ToolButtonIconOnly)
+    btn.setPopupMode(QToolButton.InstantPopup)
+    btn.setStyleSheet("QToolButton::menu-indicator { image: none; }")
     btn.setMenu(menu)
-    btn.clicked.connect(slot)
     tb.addWidget(btn)
     return btn
 
@@ -79,24 +83,24 @@ def build(win):
             "Build a molecule from a SMILES string (Ctrl+Shift+M)")
     top.addSeparator()
     _split(win, top, "Molecules", "mdi.atom", win.open_explorer,
-           m["molecules"], "Molecules — 700 by family (click: Explorer)")
+           m["molecules"], "Molecules — 700, by family (menu; the Explorer searches them)")
     _split(win, top, "Polymers", "mdi.link-variant",
            win.open_polymer_builder, m["polymers"],
-           "Polymer builder; the arrow lists PE, PVC, nylon, PET… "
+           "Polymers — Polymer builder, then PE, PVC, nylon, PET… "
            "(Ctrl+Shift+P)")
     _split(win, top, "Crystals", "mdi.cube-outline",
            win.open_crystal_builder, m["crystals"],
-           "Crystal builder — 120+ crystals, any number of cells "
+           "Crystals — Crystal builder and 120+ crystals "
            "(Ctrl+Shift+C)")
     _split(win, top, "Surfaces", "mdi.layers-outline",
            win.open_surface_builder, m["surfaces"],
-           "Surface builder — a slab cut along any (hkl) (Ctrl+Shift+F)")
+           "Surfaces — Surface builder and 60 ready faces (Ctrl+Shift+F)")
     _split(win, top, "Carbon", "mdi.hexagon-multiple",
            win.open_nano_builder, m["carbon"],
-           "Graphene, nanotubes and fullerenes (Ctrl+Shift+G)")
+           "Carbon — graphene, nanotubes and fullerenes (Ctrl+Shift+G)")
     _split(win, top, "Reactions", "mdi.flask-outline",
            win.open_reaction_builder, m["reactions"],
-           "Reaction builder — balance and draw a reaction (Ctrl+R)")
+           "Reactions — Reaction builder and 36 classics (Ctrl+R)")
     top.addSeparator()
     _action(win, top, "Properties", win.show_properties,
             "mdi.information-outline", "Formula, weight and descriptors "

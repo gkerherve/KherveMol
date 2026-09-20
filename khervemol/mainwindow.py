@@ -252,8 +252,13 @@ class MainWindow(QMainWindow):
         m_xtal.addSeparator()
         self._add_groups(m_xtal, sec["Crystals"])
         m_surf = m_xtal.addMenu("Surfaces")
+        self._act(m_surf, "Surface builder…", self.open_surface_builder)
+        m_surf.addSeparator()
         self._add_groups(m_surf, sec["Surfaces"])
         m_nano = m_xtal.addMenu("Graphene, nanotubes && fullerenes")
+        self._act(m_nano, "Graphene, nanotubes && fullerenes builder…",
+                  self.open_nano_builder)
+        m_nano.addSeparator()
         self._add_groups(m_nano, sec["Graphene, nanotubes & fullerenes"])
         self._menus.update(crystals=m_xtal, surfaces=m_surf, carbon=m_nano)
         classic = m_xtal.addMenu("Classic crystal models")

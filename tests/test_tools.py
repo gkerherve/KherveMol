@@ -55,7 +55,7 @@ def test_menus_list_what_the_tree_lists(qapp):
         for act in menu.actions():
             if act.menu() is not None:
                 n += count(act.menu())
-            elif not act.isSeparator() and act.data() is None:
+            elif not act.isSeparator() and not act.text().endswith("builder…"):
                 n += 1
         return n
 
