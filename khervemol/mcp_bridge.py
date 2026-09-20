@@ -63,6 +63,7 @@ READ_ONLY_TOOLS = frozenset({
 #: the ones held back until the user raises the access level.
 FILE_TOOLS = frozenset({
     "open_document", "save_document", "export_image", "export_svg",
+    "export_model",
 })
 
 

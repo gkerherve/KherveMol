@@ -34,7 +34,8 @@ from urllib.parse import urlencode
 
 from PyQt5.QtCore import QBuffer, QByteArray, QIODevice
 
-from . import (__version__, chem, document, elements, entries,
+from . import (__version__, chem, chemexport, document, elements, entries,
+               meshexport,
                library, mcp_library, model, polymers, properties, reactions,
                rdkit_io, shelf, svgexport)
 from .crystal import BuildError
@@ -841,6 +842,35 @@ class McpToolExecutor:
         return {"ok": True, "path": path, "width": width, "height": height,
                 "bytes": os.path.getsize(path),
                 "note": "Opens in KhervePaint as editable shapes."}
+
+    def _t_export_model(self, args):
+        path = os.path.abspath(os.path.expanduser(str(args["path"])))
+        ext = os.path.splitext(path)[1].lstrip(".").lower()
+        known = list(meshexport.FORMATS) + list(chemexport.FORMATS)
+        if ext not in known:
+            raise ToolError(
+                f"The extension '.{ext}' is not an export format. Use one "
+                f"of: {', '.join('.' + k for k in known)}.")
+        path = self._file(path, "." + ext,
+                          overwrite=args.get("overwrite", False))
+        mol = self._mol
+        try:
+            if ext in meshexport.FORMATS:
+                opts = dict(
+                    style=args.get("style", "ball_and_stick"),
+                    scale=args.get("scale_mm_per_angstrom", 10.0),
+                    quality=args.get("quality", "medium"),
+                    cell=args.get("cell_outline", False),
+                    min_stick_mm=args.get("min_bond_mm", 1.6),
+                    ascii=args.get("ascii", False))
+                result = meshexport.export(mol, path, ext, **opts)
+            else:
+                result = chemexport.export(mol, path, ext)
+        except BuildError as exc:
+            raise ToolError(str(exc.args[0]))
+        result["ok"] = True
+        result["bytes"] = os.path.getsize(result["path"])
+        return result
 
 
 def _stand_diatomic(molecule):

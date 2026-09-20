@@ -376,6 +376,14 @@ current model, to the clipboard.</li>
 sketch.</li>
 <li><b>Export PNG</b> — an image of the current tab (the 3D view at
 1600 × 1200 through the active renderer).</li>
+<li><b>Export 3D model</b> (Ctrl+Shift+3, toolbar <i>3D print</i>) — a mesh for
+3D printing, CAD, Blender or the web: <b>STL</b>, <b>3MF</b> (colours per material),
+<b>OBJ</b> (+ .mtl), <b>PLY</b> and <b>GLB</b>. Choose the size in mm per ångström (the
+dimensions are shown), the style, the quality, the thinnest bond and whether to include
+the cell outline.</li>
+<li><b>Export chemistry file</b> (Ctrl+Shift+X, toolbar <i>Chem file</i>) — <b>XYZ</b>,
+<b>MOL</b>, <b>SDF</b>, <b>PDB</b> and <b>CIF</b> (crystals, slabs and supercells), by the
+file extension.</li>
 <li><b>Export SVG (KhervePaint)</b> (Ctrl+Shift+E) — writes an SVG that
 <b>opens in KhervePaint</b> as native, editable items: each atom becomes a
 gradient-filled ellipse and each bond a line. Exports the 3D ball-and-stick

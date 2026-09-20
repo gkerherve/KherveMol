@@ -248,6 +248,19 @@ module and import.
                      Delete / Use in a reaction; rows drag onto the views).
                      `ReactionDialog` has the *My molecules* row
                      (`insert_species`).
+  - `meshexport.py`, `chemexport.py`, `exports_ui.py` — **export formats**.
+                     `meshexport` (Qt-free): `build_mesh(mol, style, scale
+                     mm/Å, quality, cell, min_stick_mm)` → `Mesh` (UV spheres +
+                     two-colour bond cylinders, outward-wound closed shells, z up
+                     standing on z=0) and writers STL (binary/ASCII), 3MF
+                     (`basematerials`, one per colour), OBJ+MTL, PLY, GLB;
+                     `export(mol, path)`. `chemexport` (Qt-free): XYZ, MOL/SDF
+                     V2000, PDB (CRYST1 + CONECT), CIF (P1; cell from
+                     `crystal:<key>` lattice × cells, a single-parallelepiped
+                     outline, or the outline's bounding box; periodic crystals
+                     wrapped + de-duplicated). `exports_ui`: `MeshDialog`, the
+                     File ▸ Export 3D model… / Export chemistry file… actions and
+                     toolbar buttons; MCP `export_model` takes the same options.
   - `polymers.py`  — Qt-free polymer chains: `PRESETS` (40 repeat units as
                      SMILES fragments + end caps, five families),
                      `chain_smiles(unit, n, head, tail)`, `build_chain`,

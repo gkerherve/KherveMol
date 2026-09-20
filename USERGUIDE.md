@@ -446,6 +446,24 @@ the built-in builder; only structure-file import and *Copy SMILES* need RDKit.
   the 2D sketch, so a document round-trips completely.
 - **Export PNG** — an image of whichever tab is active (the 3D view at
   1600 × 1200 through the active renderer).
+- **Export 3D model** (Ctrl+Shift+3, toolbar *3D print*) — a triangle mesh of the
+  structure for 3D printing, CAD, Blender or the web:
+  **STL** (binary or text; geometry only — every slicer), **3MF** (millimetres, one
+  material per colour, so a multi-colour printer keeps the element colours),
+  **OBJ** (+ `.mtl` colours), **PLY** (vertex colours, MeshLab) and **GLB**
+  (glTF 2.0: browsers, AR, game engines). The dialog sets the **size** in
+  millimetres per ångström (10 makes a C–C bond 15 mm; the resulting
+  dimensions are shown), the **style** (ball and stick, space filling, sticks),
+  the **quality** of the spheres, the **thinnest bond** (so a print is not made of
+  threads) and whether to include the **cell outline**. The model stands on z = 0,
+  centred, with the view's bond spread and colours; spheres and bonds overlap
+  where they meet, which slicers merge.
+- **Export chemistry file** (Ctrl+Shift+X, toolbar *Chem file*) — the format follows
+  the extension: **XYZ** (atom list), **MOL** and **SDF** (MDL V2000, up to 999
+  atoms, with bond orders), **PDB** (atoms + CONECT; a CRYST1 cell for crystals) and
+  **CIF** (crystals, slabs and supercells, written as a P1 cell with fractional
+  coordinates; atoms on cell faces are wrapped and de-duplicated). A molecule has no
+  cell, so it cannot be written as CIF.
 - **Export SVG (KhervePaint)** (Ctrl+Shift+E) — writes an SVG that opens in
   **KhervePaint** as native, editable items (each atom a gradient-filled
   ellipse, each bond a line). Exports the 3D ball-and-stick or the 2D

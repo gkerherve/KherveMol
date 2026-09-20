@@ -75,6 +75,11 @@ def build(win):
             "Export the current tab as a PNG (Ctrl+E)")
     _action(win, top, "SVG", win.export_svg, "mdi.vector-square",
             "Export an SVG that opens in KhervePaint (Ctrl+Shift+E)")
+    _action(win, top, "3D print", win.export_mesh, "mdi.printer-3d",
+            "Export a 3D model: STL, 3MF, OBJ, PLY or GLB (Ctrl+Shift+3)")
+    _action(win, top, "Chem file", win.export_chemistry,
+            "mdi.file-export-outline",
+            "Export XYZ, MOL, SDF, PDB or CIF (Ctrl+Shift+X)")
     top.addSeparator()
     _action(win, top, "Explorer", win.open_explorer, "mdi.magnify",
             "Search every molecule, crystal, surface, polymer and reaction "

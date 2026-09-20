@@ -38,6 +38,9 @@ pure-Python vector renderer where OpenGL is unavailable. RDKit is optional.
 - **Your own molecules in reactions** — keep the molecules you build in 3D
   (Molecule 1, 2, 3, the product…) on a shelf and pick them in the Reaction
   builder; balanced and animated from your geometry.
+- **Export** — 3D-print and mesh files (STL, 3MF with colours, OBJ, PLY, GLB) with
+  a size in mm per ångström, and chemistry files (XYZ, MOL, SDF, PDB, CIF), plus PNG,
+  SVG (KhervePaint) and `.kmol`.
 - **Molecules on surfaces** — place the molecule you drew (or a SMILES) on any
   slab, flat or upright, at a chosen height.
 - **Automatic updates** — KherveMol pulls new commits from GitHub by itself

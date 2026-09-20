@@ -679,6 +679,36 @@ TOOLS = [
             "overwrite": _b("Allow replacing an existing file."),
         }, ["path"]),
     },
+    {
+        "name": "export_model",
+        "description": (
+            "Export the structure on screen as a file. 3D model formats "
+            "(for 3D printing, Blender, viewers): .stl (geometry only), "
+            ".3mf (one material per colour), .obj (+ .mtl), .ply (vertex "
+            "colours), .glb (glTF). Chemistry formats: .xyz, .mol, .sdf, "
+            ".pdb, and .cif (crystals, slabs and supercells only). The "
+            "format is taken from the extension. For 3D models, "
+            "scale_mm_per_angstrom sets the size (10 prints a C-C bond "
+            "15 mm long); the file stands on z = 0, millimetres. Needs MCP "
+            "access 'Full'."),
+        "input_schema": _obj({
+            "path": _PATH,
+            "style": _e("Mesh style (3D formats only): ball_and_stick "
+                        "(default), space_filling or sticks.",
+                        ["ball_and_stick", "space_filling", "sticks"]),
+            "scale_mm_per_angstrom": _n(
+                "Size of a 3D model in millimetres per angstrom "
+                "(default 10).", minimum=0.05, maximum=1000),
+            "quality": _e("Sphere smoothness: low, medium (default) or "
+                          "high.", ["low", "medium", "high"]),
+            "cell_outline": _b("Include the unit-cell / slab outline as "
+                               "thin rods (3D formats only)."),
+            "min_bond_mm": _n("Thinnest bond in millimetres (default 1.6).",
+                              minimum=0.2, maximum=10),
+            "ascii": _b("Write an STL as text instead of binary."),
+            "overwrite": _b("Allow replacing an existing file."),
+        }, ["path"]),
+    },
 ]
 
 TOOL_NAMES = [t["name"] for t in TOOLS]

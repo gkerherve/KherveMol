@@ -19,6 +19,7 @@ from PyQt5.QtWidgets import (QAction, QActionGroup, QApplication, QDialog,
                              QVBoxLayout)
 
 from . import (__version__, builders_ui, chem, dnd, document, elements, entries,
+               exports_ui,
                help as help_mod, icons, library, maintools, model, molrepr,
                periodic, rdkit_io, shelf, style, supercell, svgexport)
 from .ai_assistant import AiDock
@@ -229,6 +230,11 @@ class MainWindow(QMainWindow):
         self._act(m_file, "Export PNG…", self.export_png, "Ctrl+E", "mdi.image")
         self._act(m_file, "Export SVG (KhervePaint)…", self.export_svg,
                   "Ctrl+Shift+E", "mdi.vector-square")
+        self._act(m_file, "Export 3D model (STL, 3MF, OBJ, PLY, GLB)…",
+                  self.export_mesh, "Ctrl+Shift+3", "mdi.printer-3d")
+        self._act(m_file, "Export chemistry file (XYZ, MOL, SDF, PDB, CIF)…",
+                  self.export_chemistry, "Ctrl+Shift+X",
+                  "mdi.file-export-outline")
         m_file.addSeparator()
         self._act(m_file, "Exit", self.close, "Ctrl+Q")
 
@@ -1153,6 +1159,12 @@ class MainWindow(QMainWindow):
         else:
             self.sketch.image(1200, 1000).save(path, "PNG")
         self.statusBar().showMessage(f"Exported {os.path.basename(path)}")
+
+    def export_mesh(self):
+        exports_ui.export_mesh(self)
+
+    def export_chemistry(self):
+        exports_ui.export_chemistry(self)
 
     def export_svg(self):
         """Write a KhervePaint-compatible SVG of the current tab."""

@@ -175,7 +175,9 @@ labels, bond spread, polyhedra); select_atoms just points at atoms. \
 properties gives formula, molecular \
 weight and (with RDKit) logP, TPSA, InChI. Files: new_document, \
 open_document / save_document (.kmol), export_image (PNG), export_svg \
-(opens in KhervePaint).
+(opens in KhervePaint), export_model (3D printing / mesh files STL, 3MF, \
+OBJ, PLY, GLB with size in mm per angstrom; or chemistry files XYZ, MOL, \
+SDF, PDB, CIF -- the format follows the extension).
 
 Working rules:
 - A tool error says what to change: fix it, do not retry the same call.
