@@ -184,12 +184,14 @@ assembled into a 3D model.
     and press **Bond selected** to join them. An empty view (or a crystal)
     is simply replaced, since a lattice has no room for a guest molecule.
   - onto the **2D sketch**, it drops where you let go, as a new fragment.
-- The **periodic-table dock** along the bottom shows the whole table (all
-  118 elements, CPK-coloured with atomic numbers). Click one to set the
+- The **periodic table** opens in a window of its own — the **Table** button
+  on the toolbar, **View ▸ Periodic table…** or Ctrl+T — so it takes no room in
+  the main window and stays open while you work. It shows all
+  118 elements, CPK-coloured with atomic numbers. Click one to set the
   **active element** (header shows its name, Z and valence). It drives both
   tabs: in the 3D view, select an atom and click the **＋*El*** button (or
   right-click ▸ *Add …*) to bond an atom of **any** element on — not just
-  the ten quick buttons. Toggle the dock from **View**.
+  the ten quick buttons. The toolbar's element box follows your pick.
 
 ## Structure outline
 
@@ -245,7 +247,7 @@ the Guide.
 - **2D**: Draw, Move, Atom and Erase for the sketch (picking one switches to
   the 2D tab), and Clear.
 - **Element**: the element drawn or added, in both views (any element from
-  the periodic table dock also lands here).
+  the periodic table window also lands here).
 - **3D**: Add atom (bonds the chosen element onto the selected atom),
   Single / Double / Triple bond order, Bond (join the two selected atoms),
   Delete, Labels and Lock lengths.

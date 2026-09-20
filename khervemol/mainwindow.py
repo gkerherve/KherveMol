@@ -14,14 +14,13 @@ from PyQt5.QtCore import QMimeData, QSettings, Qt, QTimer
 from PyQt5.QtWidgets import (QAction, QActionGroup, QApplication, QDialog,
                              QDialogButtonBox, QDockWidget, QFileDialog,
                              QHBoxLayout, QInputDialog, QLabel, QMainWindow,
-                             QMenu, QMessageBox, QScrollArea, QSpinBox,
+                             QMenu, QMessageBox, QSpinBox,
                              QTabWidget, QTreeWidget, QTreeWidgetItem,
                              QVBoxLayout)
 
-from . import (__version__, builders_ui, maintools, crystal_library, dnd, document,
-               elements, entries, help as help_mod, icons, library, model,
-               molrepr, periodic, rdkit_io, reactions, style, supercell,
-               svgexport)
+from . import (__version__, builders_ui, dnd, document, elements, entries,
+               help as help_mod, icons, library, maintools, model, molrepr,
+               periodic, rdkit_io, style, supercell, svgexport)
 from .ai_assistant import AiDock
 from .crystal import BuildError
 from .editor2d import Editor2D
@@ -131,19 +130,11 @@ class MainWindow(QMainWindow):
         self.resizeDocks([struct_dock, lib_dock], [300, 460], Qt.Vertical)
         self.resizeDocks([struct_dock], [300], Qt.Horizontal)
 
-        # Bottom: the full periodic table (scrolls if the window is narrow).
-        pt_dock = QDockWidget("Periodic table", self)
-        pt_dock.setAllowedAreas(Qt.BottomDockWidgetArea | Qt.TopDockWidgetArea)
+        # The periodic table is a window of its own (toolbar button / View
+        # menu), not a dock: it was too big to keep on screen.
         self.picker = periodic.PeriodicPicker()
         self.picker.picked.connect(self._on_element_picked)
-        scroll = QScrollArea()
-        scroll.setWidget(self.picker)
-        scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
-        scroll.setFrameShape(QScrollArea.NoFrame)
-        pt_dock.setWidget(scroll)
-        self.addDockWidget(Qt.BottomDockWidgetArea, pt_dock)
-        self._ptable_dock = pt_dock
+        self._ptable_window = None
 
     def _tree_header(self, title):
         """A bold, non-selectable top-level section header in the tree."""
@@ -349,7 +340,8 @@ class MainWindow(QMainWindow):
         m_view.addSeparator()
         m_view.addAction(self._structure_dock.toggleViewAction())
         m_view.addAction(self._library_dock.toggleViewAction())
-        m_view.addAction(self._ptable_dock.toggleViewAction())
+        self._act(m_view, "Periodic table…", self.show_periodic_table,
+                  "Ctrl+T", "mdi.periodic-table")
         ai_toggle = self.ai_dock.toggleViewAction()
         ai_toggle.setText("AI Chat")
         m_view.addAction(ai_toggle)
@@ -378,6 +370,15 @@ class MainWindow(QMainWindow):
             self._sync_order_actions)
         self.tabs.currentChanged.connect(self._sync_tool_states)
         self._sync_tool_states()
+
+    def show_periodic_table(self):
+        """Open (or bring forward) the periodic-table window; clicking an
+        element there sets the active element for both views."""
+        if self._ptable_window is None:
+            self._ptable_window = periodic.PeriodicWindow(self.picker, self)
+        self._ptable_window.show()
+        self._ptable_window.raise_()
+        self._ptable_window.activateWindow()
 
     # ----------------------------------------------------- toolbar helpers
     def use_sketch_tool(self, key):
@@ -607,10 +608,12 @@ class MainWindow(QMainWindow):
         combo = getattr(self, "tb_element", None)
         if combo is not None and combo.currentText() != el:
             i = combo.findText(el)
-            if i >= 0:
-                combo.blockSignals(True)
-                combo.setCurrentIndex(i)
-                combo.blockSignals(False)
+            combo.blockSignals(True)
+            if i < 0:               # an element outside the quick list
+                combo.addItem(icons.element_icon(elements.color(el)), el)
+                i = combo.findText(el)
+            combo.setCurrentIndex(i)
+            combo.blockSignals(False)
         # The periodic-table dock sets the active element for BOTH the 2D
         # sketch and the 3D builder's ＋ button / right-click "Add".
         self.viewer.set_active_element(el)

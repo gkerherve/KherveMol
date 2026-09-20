@@ -379,8 +379,9 @@ module and import.
   - `periodic.py`  — `PeriodicPicker`: the **full** periodic-table grid
                      (all 118 elements, atomic number + symbol per cell,
                      CPK-coloured, f-block below) built from
-                     `elements.table_cells()`. Sits in a full-width bottom
-                     dock (inside a `QScrollArea`); sets the active drawing
+                     `elements.table_cells()`. `PeriodicWindow` holds it in a
+                     non-modal tool window opened by the toolbar Table
+                     button / View menu / Ctrl+T (no longer a dock); sets the active drawing
                      element and emits `picked(symbol)`.
   - `catalog.py`   — **300+** named compounds `(category, name, SMILES)`:
                      `_CURATED` families (solvents, aromatics, heterocycles,

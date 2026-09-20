@@ -195,15 +195,15 @@ original <b>Classic 3D models</b>. Everything builds without RDKit — a
 built-in SMILES parser and 3D embedder does the work (RDKit takes over
 when installed, for force-field-cleaned geometry). The <b>Explorer</b>
 (Ctrl+L) is the same list with search and a preview.</li>
-<li>The <b>periodic-table dock</b> along the bottom shows the whole table
-(all 118 elements, CPK-coloured with atomic numbers). Click one to make it
+<li>The <b>periodic table</b> opens in its own window (toolbar <b>Table</b>
+button, <i>View ▸ Periodic table…</i>, Ctrl+T) and stays open while you work:
+it shows the whole table (all 118 elements, CPK-coloured with atomic numbers). Click one to make it
 the <b>active element</b>. This drives both the 2D sketch and the 3D
 builder: in the 3D view, select an atom then click the <b>＋<i>El</i></b>
 button (or right-click ▸ <i>Add …</i>) to bond an atom of <i>any</i>
 element on — not just the ten quick buttons. Every element in the table
 can be added: it bonds where chemistry allows (including Xe/Kr compounds),
-otherwise it's dropped in as a free atom (e.g. the inert He/Ne/Ar). Toggle
-the dock from <i>View</i>.</li>
+otherwise it's dropped in as a free atom (e.g. the inert He/Ne/Ar).</li>
 </ul>
 
 <h3>Molecule Explorer</h3>

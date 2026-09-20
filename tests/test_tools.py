@@ -154,3 +154,19 @@ def test_polymer_dialog(qapp):
     d.n.setValue(3)
     k, v, _l = d.entry()
     assert entries.build(k, v).formula() == "C6H11F3"
+
+
+def test_periodic_table_is_a_window_not_a_dock(qapp):
+    from PyQt5.QtWidgets import QDockWidget
+    from khervemol.mainwindow import MainWindow
+    w = MainWindow()
+    assert not any(d.windowTitle() == "Periodic table"
+                   for d in w.findChildren(QDockWidget))
+    assert w._ptable_window is None
+    w.show_periodic_table()
+    assert w._ptable_window.isVisible() and not w._ptable_window.isModal()
+    w.picker.picked.emit("Fe")             # a click in the window
+    assert w.viewer.active_element == "Fe" and w.sketch.element == "Fe"
+    assert w.tb_element.currentText() == "Fe"   # added to the toolbar box
+    w.show_periodic_table()                # reopening reuses the window
+    assert w._ptable_window.isVisible()

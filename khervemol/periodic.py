@@ -3,8 +3,9 @@
 `PeriodicPicker` lays out every element (Z = 1..118) in the classic wide
 table — s/p/d blocks in rows 1..7 and the f-block (lanthanides / actinides)
 below. Each cell shows the atomic number and symbol, coloured by the Jmol
-CPK scheme. Clicking one emits `picked(symbol)` and sets it active. Sized
-to sit in a full-width bottom dock so the whole table is readable.
+CPK scheme. Clicking one emits `picked(symbol)` and sets it active.
+`PeriodicWindow` holds it in a small window of its own, opened from the
+toolbar, so the table costs no room in the main window.
 
 Copyright (C) 2026 Gwilherm Kerherve
 
@@ -15,8 +16,9 @@ the Free Software Foundation, either version 3 of the License, or
 """
 
 from PyQt5.QtCore import Qt, pyqtSignal
-from PyQt5.QtWidgets import (QGridLayout, QHBoxLayout, QLabel, QPushButton,
-                             QSizePolicy, QVBoxLayout, QWidget)
+from PyQt5.QtWidgets import (QDialog, QGridLayout, QHBoxLayout, QLabel,
+                             QPushButton, QScrollArea, QSizePolicy,
+                             QVBoxLayout, QWidget)
 
 from . import elements
 
@@ -106,3 +108,24 @@ class PeriodicPicker(QWidget):
 
     def active(self):
         return self._active
+
+
+class PeriodicWindow(QDialog):
+    """The periodic table in its own non-modal window. It stays open while
+    you work: each click sets the active element, and it scrolls if the
+    screen is small."""
+
+    def __init__(self, picker, parent=None):
+        super().__init__(parent, Qt.Tool)
+        self.setWindowTitle("Periodic table")
+        self.setModal(False)
+        box = QVBoxLayout(self)
+        box.setContentsMargins(6, 6, 6, 6)
+        scroll = QScrollArea()
+        scroll.setWidget(picker)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QScrollArea.NoFrame)
+        box.addWidget(scroll)
+        picker.show()
+        hint = picker.sizeHint()
+        self.resize(hint.width() + 30, hint.height() + 30)

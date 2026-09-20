@@ -147,6 +147,9 @@ def build(win):
         win.tb_element.addItem(icons.element_icon(elements.color(el)), el)
     win.tb_element.currentTextChanged.connect(win._on_element_picked)
     draw.addWidget(win.tb_element)
+    _action(win, draw, "Table", win.show_periodic_table,
+            "mdi.periodic-table", "Periodic table — pick any of the 118 "
+            "elements (Ctrl+T)")
     draw.addSeparator()
     draw.addWidget(QLabel(" 3D "))
     win._edit_actions = []
