@@ -40,6 +40,7 @@ def test_library_tree_mimedata(qapp):
 def test_drop_adds_fragment(qapp):
     from khervemol.mainwindow import MainWindow
     w = MainWindow()
+    w.load_entry("model", "ethanol", "Ethanol")   # off the start screen
     before = len(w.sketch.atoms)
     w._on_drop_molecule("model", "benzene", 300, 100)
     assert len(w.sketch.atoms) > before

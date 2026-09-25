@@ -485,6 +485,13 @@ module and import.
                      `cells`/`tilts`/`colors`/`poly` and the per-atom colour
                      slot; v1 still loads. A crystal is `rebuild()`-ed on
                      load so `owners` comes back with it.
+  - `recent.py`    — the **recently opened files** list behind the start
+                     screen and File ▸ Open Recent: `list_paths()` (most
+                     recent first, missing files silently pruned on read),
+                     `add(path)` (moves to the front, capped at
+                     `MAX_RECENT` = 8), `remove(path)`, `clear()` — all
+                     backed by the same `QSettings("Kherve", "KherveMol")`
+                     store `style.py`/`updater.py` use, key `"recent_files"`.
   - `svgexport.py` — **KhervePaint-compatible SVG** writer. `specs_to_svg`
                      turns shape specs into KhervePaint's own SVG shape
                      (spheres → `<ellipse>` with an `objectBoundingBox`
@@ -500,6 +507,19 @@ module and import.
                      specs for the current `molrepr` mode; `normalize` fits the
                      viewBox. Wired to File ▸ Export SVG (Ctrl+Shift+E) and
                      both context menus.
+  - `welcome.py`   — `WelcomeScreen`: the **start screen** `mainwindow.py`
+                     shows in place of the workspace until a molecule is on
+                     screen — a `_Wallpaper` (teal gradient + a few soft
+                     translucent circles, repainted from the active theme's
+                     `style.tokens()` so it never fights the chosen colour
+                     scheme) behind a card with the `icons.app_icon()` mark,
+                     New Molecule / Open… / Browse Library… buttons, and the
+                     recent files (`recent.list_paths()`, one `_RecentRow`
+                     each — click to open, right-click to remove). Emits
+                     `new_requested`/`open_requested`/`browse_requested`/
+                     `path_chosen(path)`; `refresh()` reloads the list (an
+                     empty placeholder when there is none) and `restyle()`
+                     re-tints the card and rows after a theme change.
   - `mainwindow.py`— `MainWindow` shell: a `QTabWidget` (3D View / 2D
                      Sketch), a **left** dock (library tree — both the
                      built-in models AND the full `catalog`, 360+ leaves,
@@ -518,6 +538,19 @@ module and import.
                      `flatten_to_2d`, and the RDKit actions (From SMILES…,
                      Import structure file…, Copy SMILES of structure — each
                      guarded by `rdkit_io.available()`).
+                     **Central widget is a `QStackedWidget`**: page 0 is the
+                     `welcome.WelcomeScreen` start screen, page 1 is the
+                     `QTabWidget`. The window opens on the start screen (no
+                     molecule loaded — `Viewer3D`'s own empty
+                     `Molecule(name="empty")` default); `viewer.molecule_changed`
+                     is wired to `_show_workspace`, so any load (New, Open,
+                     library, SMILES, a dropped compound…) switches to the
+                     workspace on its own — no per-call-site plumbing needed.
+                     `_show_welcome` (File ▸ Start Screen) goes back.
+                     `open_path`/`_write` call `recent.add(path)` and
+                     `welcome.refresh()`; File ▸ Open &Recent
+                     (`_populate_recent_menu`, built `aboutToShow`) and
+                     `_set_theme` → `welcome.restyle()` read the same list.
   - `ai_providers.py` — dependency-free (urllib) AI backend registry:
                      Claude / ChatGPT / Mistral / Ollama / Local, each with
                      `chat()` and `list_models()`; keys/base URLs read from
@@ -614,9 +647,12 @@ and extend the round-trip tests in `tests/test_document.py`.
 
 ## UI conventions
 
-- Single main window; central `QTabWidget` with **3D View** and **2D
-  Sketch**. Left dock = library tree (categories) over the periodic-table
-  element picker. Top toolbar = file ops + a few quick-load structures.
+- Single main window; central widget is a `QStackedWidget`: a **start
+  screen** (wallpaper, New/Open/Browse actions, recent files — File ▸
+  Start Screen returns to it) until a molecule is loaded, then the
+  `QTabWidget` with **3D View** and **2D Sketch**. Left dock = library
+  tree (categories) over the periodic-table element picker. Top toolbar =
+  file ops + a few quick-load structures.
 - 3D View: **drag background** to orbit, **wheel** to zoom, **view cube**
   to snap to a face, **click an atom** to select (green ring), **click an
   element** in the Add-atom palette to bond it on (valence-checked),

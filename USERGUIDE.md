@@ -3,6 +3,17 @@
 KherveMol draws chemical compounds and crystal structures in 3D and 2D.
 Everything you build stays as ordinary vector geometry you can export.
 
+## Start screen
+
+KherveMol opens on a start screen rather than a blank document: **New
+Molecule**, **Open…**, **Browse Library…**, and your recently opened
+`.kmol` files (click one to reopen it; right-click ▸ *Remove from Recent
+Files* to forget it). It steps aside on its own the moment a molecule is
+loaded — from any of its own buttons, the library tree, the Explorer, a
+built SMILES, or a file opened from the command line. **File ▸ Start
+Screen** brings it back at any time, and **File ▸ Open Recent** lists the
+same files from the menu bar.
+
 ## The two tabs
 
 - **3D View** — an interactive ball-and-stick model. Atoms are lit CPK

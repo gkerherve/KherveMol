@@ -38,6 +38,7 @@ PNG = b"\x89PNG\r\n\x1a\n"
 def win(qapp):
     from khervemol.mainwindow import MainWindow
     w = MainWindow()
+    w.load_entry("model", "ethanol", "Ethanol")   # off the start screen
     yield w
     w.viewer.stop_animation()
     w.close()

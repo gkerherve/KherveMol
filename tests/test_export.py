@@ -290,6 +290,7 @@ def test_mcp_export_model_tool(qapp, tmp_path):
     from khervemol.mainwindow import MainWindow
     assert "export_model" in mcp_schema.TOOL_NAMES
     w = MainWindow()
+    w.load_entry("model", "ethanol", "Ethanol")   # off the start screen
     ex = mcp_tools.McpToolExecutor(w)
     r = ex.execute("export_model", {"path": str(tmp_path / "e.stl"),
                                     "scale_mm_per_angstrom": 5})
