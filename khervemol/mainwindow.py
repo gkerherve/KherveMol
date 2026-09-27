@@ -14,14 +14,14 @@ from PyQt5.QtCore import QMimeData, QSettings, Qt, QTimer
 from PyQt5.QtWidgets import (QAction, QActionGroup, QApplication, QDialog,
                              QDialogButtonBox, QDockWidget, QFileDialog,
                              QHBoxLayout, QInputDialog, QLabel, QMainWindow,
-                             QMenu, QMessageBox, QSpinBox,
+                             QMenu, QMessageBox, QSpinBox, QStackedWidget,
                              QTabWidget, QTreeWidget, QTreeWidgetItem,
                              QVBoxLayout)
 
 from . import (__version__, builders_ui, chem, dnd, document, elements, entries,
                exports_ui,
                help as help_mod, icons, library, maintools, model, molrepr,
-               periodic, rdkit_io, shelf, style, supercell, svgexport)
+               periodic, rdkit_io, recent, shelf, style, supercell, svgexport)
 from .ai_assistant import AiDock
 from .crystal import BuildError
 from .editor2d import Editor2D
@@ -30,6 +30,7 @@ from .explorer import MoleculeExplorer
 from .structure_tree import StructureTree
 from . import viewer3d
 from .viewer3d import Viewer3D
+from .welcome import WelcomeScreen
 
 
 class _LibraryTree(QTreeWidget):
@@ -63,7 +64,19 @@ class MainWindow(QMainWindow):
         self.sketch = Editor2D()
         self.tabs.addTab(self.viewer, "3D View")
         self.tabs.addTab(self.sketch, "2D Sketch")
-        self.setCentralWidget(self.tabs)
+
+        # The window opens on a start screen (wallpaper + recent files)
+        # instead of a document; it steps aside the moment a molecule
+        # lands in the 3D view (see `_show_workspace`, wired below).
+        self.welcome = WelcomeScreen()
+        self.welcome.new_requested.connect(self.new_document)
+        self.welcome.open_requested.connect(self.open_dialog)
+        self.welcome.browse_requested.connect(self.open_explorer)
+        self.welcome.path_chosen.connect(self.open_path)
+        self._central = QStackedWidget()
+        self._central.addWidget(self.welcome)
+        self._central.addWidget(self.tabs)
+        self.setCentralWidget(self._central)
 
         # The 2D sketch is a real editor: once you edit/drop in it, it goes
         # "dirty" and 3D edits stop overwriting it (until an explicit sync).
@@ -84,6 +97,7 @@ class MainWindow(QMainWindow):
             self.add_molecule_to_surface)
         self.viewer.molecule_changed.connect(self._remember_drawn)
         self.viewer.structure_changed.connect(self._remember_drawn)
+        self.viewer.molecule_changed.connect(self._show_workspace)
 
         self._build_dock()
         self._build_ai_dock()
@@ -91,8 +105,6 @@ class MainWindow(QMainWindow):
         self._build_toolbar()
         self.statusBar().showMessage("Ready")
 
-        self.viewer.set_molecule(library.make("ethanol"))
-        self._sync_sketch(force=True)
         self._retitle()
         self.resize(1160, 780)
         from . import mcp_dialog
@@ -225,6 +237,10 @@ class MainWindow(QMainWindow):
         m_file = mb.addMenu("&File")
         self._act(m_file, "New", self.new_document, "Ctrl+N", "mdi.file-outline")
         self._act(m_file, "Open…", self.open_dialog, "Ctrl+O", "mdi.folder-open")
+        self._recent_menu = m_file.addMenu("Open &Recent")
+        self._recent_menu.aboutToShow.connect(self._populate_recent_menu)
+        self._act(m_file, "Start Screen", self._show_welcome,
+                  icon_name="mdi.home-outline")
         m_file.addSeparator()
         self._act(m_file, "Save", self.save, "Ctrl+S", "mdi.content-save")
         self._act(m_file, "Save As…", self.save_as, "Ctrl+Shift+S")
@@ -408,6 +424,25 @@ class MainWindow(QMainWindow):
         m_help.addSeparator()
         self._act(m_help, "About KherveMol", self.show_about)
 
+    def _populate_recent_menu(self):
+        m = self._recent_menu
+        m.clear()
+        paths = recent.list_paths()
+        if not paths:
+            act = m.addAction("(No recent files)")
+            act.setEnabled(False)
+            return
+        for path in paths:
+            act = m.addAction(os.path.basename(path))
+            act.setToolTip(path)
+            act.triggered.connect(lambda _=False, p=path: self.open_path(p))
+        m.addSeparator()
+        m.addAction("Clear Recent Files", self._clear_recent)
+
+    def _clear_recent(self):
+        recent.clear()
+        self.welcome.refresh()
+
     def _act(self, menu, text, slot, shortcut=None, icon_name=None):
         act = QAction(text, self)
         if icon_name:
@@ -428,6 +463,16 @@ class MainWindow(QMainWindow):
             self._sync_order_actions)
         self.tabs.currentChanged.connect(self._sync_tool_states)
         self._sync_tool_states()
+
+    def _show_workspace(self):
+        """Switch away from the start screen once a molecule is on screen."""
+        if self._central.currentWidget() is not self.tabs:
+            self._central.setCurrentWidget(self.tabs)
+
+    def _show_welcome(self):
+        """File > Start Screen: back to the wallpaper and recent files."""
+        self.welcome.refresh()
+        self._central.setCurrentWidget(self.welcome)
 
     def show_periodic_table(self):
         """Open (or bring forward) the periodic-table window; clicking an
@@ -702,6 +747,7 @@ class MainWindow(QMainWindow):
 
     def _set_theme(self, name):
         style.apply_style(QApplication.instance(), name)
+        self.welcome.restyle()
 
     # ---------------------------------------------------------- RDKit bridge
     def _need_rdkit(self):
@@ -1158,6 +1204,8 @@ class MainWindow(QMainWindow):
         self.sketch.set_structure(sk_atoms, sk_bonds)
         self._path = path
         self._retitle()
+        recent.add(path)
+        self.welcome.refresh()
         self.statusBar().showMessage(f"Opened {os.path.basename(path)}")
 
     def save(self):
@@ -1184,6 +1232,8 @@ class MainWindow(QMainWindow):
         except Exception as exc:                       # noqa: BLE001
             QMessageBox.warning(self, "Save failed", str(exc))
             return
+        recent.add(path)
+        self.welcome.refresh()
         self.statusBar().showMessage(f"Saved {os.path.basename(path)}")
 
     def export_png(self):

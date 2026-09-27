@@ -21,6 +21,19 @@ _GUIDE = """
 <p>KherveMol draws chemical compounds and crystal structures in 3D and 2D.
 Everything you build stays as ordinary vector geometry you can export.</p>
 
+<h3>Start screen</h3>
+<ul>
+<li>KherveMol opens on a start screen rather than a blank document:
+<b>New Molecule</b>, <b>Open…</b>, <b>Browse Library…</b>, and your recently
+opened <code>.kmol</code> files (click one to reopen it; right-click ▸
+<i>Remove from Recent Files</i> to forget it).</li>
+<li>It steps aside on its own the moment a molecule is loaded — from any of
+its own buttons, the library tree, the Explorer, a built SMILES, or a file
+opened from the command line.</li>
+<li><b>File ▸ Start Screen</b> brings it back at any time, and
+<b>File ▸ Open Recent</b> lists the same files from the menu bar.</li>
+</ul>
+
 <h3>The two tabs</h3>
 <ul>
 <li><b>3D View</b> — an interactive OpenGL model. Atoms are lit CPK
