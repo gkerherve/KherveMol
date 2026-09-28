@@ -1106,3 +1106,20 @@ def test_dialog_turns_the_bridge_on_and_off(qapp, win, state_dir):
         QSettings(*style._SETTINGS).remove("mcp/access")
         bridge.stop()
         dlg.close()
+
+
+def test_build_surface_custom_complete_and_doped(win, run):
+    from test_doping import ATOMS, CELL
+    res = ok(run("build_surface", custom={**CELL, "atoms": ATOMS},
+                 miller="001", repeat=[5, 5], layers=2, complete=True,
+                 dope=[["Nb", "Mo", 0.1]], seed=7))
+    assert res["composition"] == {"La": 100, "Mo": 10, "Nb": 90,
+                                  "O": 400}
+    blk = ok(run("build_crystal", custom={**CELL, "atoms": ATOMS},
+                 cells=[2, 1, 1]))
+    assert blk["composition"] == {"La": 8, "Nb": 8, "O": 32}
+    assert "exactly one" in run("build_crystal", crystal="cu",
+                                cif="/nope.cif")["error"]
+    assert "exactly one" in run("build_surface", miller="111")["error"]
+    assert "polyhedra" in run("build_surface", crystal="cu", miller="111",
+                              complete=True)["error"]

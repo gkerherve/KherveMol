@@ -17,15 +17,6 @@ KherveCAD's Qt-free chemistry modules and needs no RDKit either.
 - Python 3.12 / 3.13 with PyQt5 (+ qtawesome for icons).
 - Run via `python KherveMol.py` or `python -m khervemol`.
 - Crash log: `%TEMP%/khervemol_crash.log`.
-- **Windows release**: `powershell -ExecutionPolicy Bypass -File
-  .\build_release.ps1` writes `khervemol/VERSION` (a frozen build has no
-  `.git`, so `_version.get_version()` reads that file first), runs
-  `KherveMol.spec` (PyInstaller one-folder, PyQt5 + qtawesome + rdkit) into
-  `dist/KherveMol/`, zips it, and — if Inno Setup 6 is installed — builds
-  `installer/Setup_KherveMol_<version>.exe` from `KherveMol_setup.iss`. The
-  spec names the `PyQt5._QOpenGLFunctions_*` modules explicitly:
-  `versionFunctions()` imports them at runtime, so without that the frozen
-  viewer silently drops to the classic renderer.
 - **Version string** is derived at runtime in `_version.py` from
   `git rev-list --count HEAD` and `git rev-parse --short HEAD`, cached
   with `lru_cache`. Falls back to `_FALLBACK = "0.1.0"` outside a git
@@ -191,10 +182,24 @@ module and import.
                      families, built from prototype functions (`fcc`, `bcc`,
                      `hcp`, `diamond`, `zinc_blende`, `rock_salt`, `fluorite`,
                      `wurtzite`, `rutile` …). Tests pin every entry to its
-                     density and nearest-neighbour distance.
+                     density and nearest-neighbour distance. `custom(spec)`
+                     builds any cell from `atoms`, or from `space_group` +
+                     `setting` + `basis` (asymmetric unit, via `symmetry`);
+                     `bonds` [[el, el, max Å]] / polyhedra fill
+                     `Crystal.cutoffs`, else `auto_bonds` guesses from the
+                     covalent radii.
+  - `symmetry.py`  — **optional ASE** bridge (Qt-free, `ase` imported lazily
+                     inside the functions; `available()`): `expand` (space
+                     group + asymmetric unit → every atom) and `read_cif`
+                     (CIF → `Crystal`). Without ASE they raise ValueError
+                     "install ase (pip install ase) or give every atom".
+                     Treat it like RDKit: never import `ase` elsewhere;
+                     tests use `pytest.importorskip("ase")`.
   - `surface.py`   — slab of any crystal cut along (hkl): `parse_miller`,
                      `in_plane_basis` (primitive 2D cell, centring-aware),
-                     `surface_cell`, `widest_gap` termination. Bulk-terminated.
+                     `surface_cell` (`pad=` adds the bulk layers beyond the
+                     cut as `pad_atoms`), `widest_gap` termination.
+                     Bulk-terminated.
   - `nano.py`      — graphene (AA/AB/ABA/ABC, twisted), ribbons, dots,
                      vacancies / N-doping, graphite surface, (n,m) nanotubes,
                      fullerenes (C20/C60/C70… capped tubes).
@@ -207,7 +212,13 @@ module and import.
                      KhervePaint tilt-as-a-defect works on all 122 crystals;
                      bonds are found on the *untilted* block and applied by
                      index; `boundary=False` gives a fixed `cell:<key>`
-                     block), `surface_model` (auto-sized slab),
+                     block), `surface_model` (auto-sized slab;
+                     `complete=True` → `complete_polyhedra`: whole
+                     polyhedra at the cut, ligands from `pad_atoms` and
+                     in-plane images, orphans dropped; `dope=[(host,
+                     dopant, frac)]`, `seed` → `substitute`, pure Python,
+                     also on `crystal_model`, whose doped / custom blocks
+                     are fixed `cell:` blocks),
                      `nano_model`, `find_bonds`, `orient`.
   - `reactions.py` — `solve(text)` → `Reaction` (parse, exact rational
                      balance over atoms **and charge**, `source` / `equation`),
@@ -234,7 +245,8 @@ module and import.
                      tree and the Explorer, `build_smiles` prefers RDKit and
                      falls back to `chem.smiles_model`. Values with options are
                      query strings (`cu?cells=2,2,2`, `si:111?layers=4`,
-                     `graphene?width=3&layers=2`).
+                     `graphene?width=3&layers=2`; crystals and surfaces take
+                     `dope=Nb:Mo:0.1&seed=7`, surfaces `complete=1`).
   - `updater.py`   — **auto-update from GitHub** for a source checkout: `check`
                      (`git fetch` + ahead/behind/dirty vs the upstream),
                      `fast_forward` (only when strictly behind and clean),
@@ -698,7 +710,6 @@ stackable crystals, so a new entry is covered automatically.
 
 ## Roadmap
 
-- CIF → crystal import (still guarded/optional).
 - User-editable lattice parameters (a, b, c, α, β, γ) on a loaded system,
   persisted in the `.kmol` file, rather than the illustrative defaults.
 - 2D sketch → 3D without RDKit: write SMILES from the sketch graph so

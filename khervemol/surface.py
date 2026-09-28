@@ -219,11 +219,13 @@ def _solve(M, x):
             _dot(a, _cross(b, x)) / det)
 
 
-def surface_cell(spec: SurfaceSpec):
+def surface_cell(spec: SurfaceSpec, pad: int = 0):
     """The slab's frame and atoms: dict with U, V (in-plane vectors,
     rotated Å), depth (Å), d (interplanar spacing Å) and atoms
     [(element, (x, y, z) Å)] of ONE surface cell over the whole depth,
-    top at z = 0."""
+    top at z = 0. With *pad*, ``pad_atoms`` also lists the bulk's *pad*
+    layers above and below the slab (same frame) — where the ligands of
+    a polyhedron cut by the surface come from."""
     c = spec.crystal
     hkl = tuple(spec.miller)
     u, v, w = in_plane_basis(c, hkl)
@@ -254,18 +256,20 @@ def surface_cell(spec: SurfaceSpec):
     term = spec.termination
     if term is None:
         term = widest_gap([g for *_x, g in cell])
-    atoms = []
+    atoms, padded = [], []
     for el, s, t, g in cell:
         gg = wrap(g - term)
-        for layer in range(spec.layers):
+        for layer in range(-pad, spec.layers + pad):
             z = gg - layer                   # layers below the top one
             s2, t2 = wrap(s + z * sw), wrap(t + z * tw)
-            atoms.append((el, (s2 * ru[0] + t2 * rv[0],
-                               s2 * ru[1] + t2 * rv[1], z * d)))
+            (atoms if 0 <= layer < spec.layers else padded).append(
+                (el, (s2 * ru[0] + t2 * rv[0], s2 * ru[1] + t2 * rv[1],
+                      z * d)))
     top = max(p[2] for _e, p in atoms)
     atoms = [(el, (p[0], p[1], p[2] - top)) for el, p in atoms]
+    padded = [(el, (p[0], p[1], p[2] - top)) for el, p in padded]
     return {"U": ru, "V": rv, "d": d, "hkl": hkl, "termination": term,
-            "depth": spec.layers * d, "atoms": atoms,
+            "depth": spec.layers * d, "atoms": atoms, "pad_atoms": padded,
             "vectors": {n: [round(x, 4) for x in vec]
                         for n, vec in (("u", u), ("v", v), ("w", w))}}
 

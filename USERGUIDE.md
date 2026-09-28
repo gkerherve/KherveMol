@@ -294,13 +294,21 @@ library tree):
   are drawn in every cell that shares it, so the block looks complete;
   untick the option for the true contents of the cell. The summary line
   gives the space group, lattice parameters, atoms per cell and density.
+  The *Doping* row (host, dopant, fraction, seed) swaps `round(n × fraction)`
+  randomly chosen host atoms for the dopant — the same atoms for the same
+  seed; a doped block shows the true cell contents.
 - **Surface builder…** (Ctrl+Shift+F) — cut a slab of any crystal along
   any plane: type Miller indices (`111`, `1 1 0`, `1-10`) or four
   hexagonal indices (`0001`, `10-10`). Leave *size automatically* on, or set
   the number of surface cells and layers. *Termination* picks where the
   cut falls (automatic = the widest gap between planes, which breaks the
   fewest bonds). Slabs are bulk-terminated — no relaxation or
-  reconstruction.
+  reconstruction. *Whole polyhedra* (crystals with coordination polyhedra)
+  gives every centre atom all its ligands — taken from beyond the cut or
+  across the periodic edge — and drops ligands with no centre, so a slab of
+  isolated tetrahedra (scheelite NbO4) stays stoichiometric. The *Doping*
+  row works as in the Crystal builder, after the polyhedra are completed
+  (LaNb0.9Mo0.1O4: Nb → Mo, 0.1).
 - **Graphene, nanotubes & fullerenes…** (Ctrl+Shift+G) — graphene sheets
   (1–6 layers stacked AB / ABA / ABC / AA, or a twisted second layer),
   graphite surfaces (with a step), armchair / zigzag nanoribbons, quantum
@@ -448,12 +456,20 @@ Then the **Molecule** menu gains:
   built-in builder (VSEPR shapes, ring templates, a light relaxation); RDKit
   simply gives more refined geometry.
 - **Import structure file…** — open a `.mol`, `.sdf`, or `.pdb` file (uses
-  the file's own 3D coordinates when present).
+  the file's own 3D coordinates when present), or a `.cif` crystal — that
+  one goes through **ASE** instead (`pip install ase`, optional), and its
+  bonds are guessed from the covalent radii.
 - **Copy SMILES of structure** — best-effort canonical SMILES of the
   current model, to the clipboard.
 
 Without RDKit the app runs normally: SMILES and the whole library build with
 the built-in builder; only structure-file import and *Copy SMILES* need RDKit.
+
+**ASE (optional).** With `ase` installed KherveMol also reads CIF files and,
+over MCP, expands a space group + asymmetric unit into the full cell
+(`build_crystal` / `build_surface` with `custom: {a, c, space_group: '88',
+setting: 2, basis: [...]}`). Without it, give every atom of the cell.
+Doping and whole polyhedra never need ASE.
 
 ## Structure menu
 

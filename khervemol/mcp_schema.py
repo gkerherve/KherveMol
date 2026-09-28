@@ -133,6 +133,61 @@ _ADSORBATE = {
 }
 
 
+_ROWS = {"type": "array", "items": {}, "minItems": 3, "maxItems": 4}
+
+#: a crystal the library lacks (mirrors `crystal.custom`)
+_CUSTOM = {
+    "type": "object", "additionalProperties": False, "required": ["a"],
+    "description": (
+        "A crystal the library lacks. Lengths in angstrom (or nm with "
+        "units:'nm'). Give EITHER `atoms` (every atom of the cell) OR "
+        "`space_group` + `basis` (asymmetric unit; expanded with ASE, "
+        "which must be installed). E.g. scheelite LaNbO4: {a:5.40, "
+        "c:11.66, space_group:'88', setting:2, basis:[['La',0,0.25,0.625],"
+        "['Nb',0,0.25,0.125],['O',0.1504,0.0085,0.2111]], polyhedra:"
+        "{centre:'Nb', ligand:'O', cutoff:2.1}}."),
+    "properties": {
+        "name": _s("Display name."),
+        "formula": _s("Formula shown in labels."),
+        "a": _n("a", minimum=0.01), "b": _n("b (default a)", minimum=0.01),
+        "c": _n("c (default a)", minimum=0.01),
+        "alpha": _n("alpha, degrees (default 90)"),
+        "beta": _n("beta, degrees (default 90)"),
+        "gamma": _n("gamma, degrees (default 90)"),
+        "units": _e("'angstrom' (default) or 'nm'.", ["angstrom", "nm"]),
+        "atoms": _arr("Every atom of the cell: [element, fx, fy, fz].",
+                      _ROWS),
+        "space_group": _s("Space group as text: the number ('88') or the "
+                          "Hermann-Mauguin symbol ('I 41/a'), with "
+                          "`basis`."),
+        "setting": _i("Origin choice 1 or 2 (default 1).", minimum=1,
+                      maximum=2),
+        "basis": _arr("Asymmetric unit: [element, fx, fy, fz].", _ROWS),
+        "polyhedra": {"type": "object", "additionalProperties": False,
+                      "description": "Coordination polyhedra to draw.",
+                      "required": ["centre", "ligand", "cutoff"],
+                      "properties": {
+                          "centre": _s("Centre element, e.g. 'Nb'."),
+                          "ligand": _s("Ligand element, e.g. 'O'."),
+                          "cutoff": _n("Longest centre-ligand bond.",
+                                       minimum=0.01)}},
+        "bonds": _arr("Bonds to draw: [element, element, max length]. "
+                      "Default: the polyhedra bond, else any pair closer "
+                      "than 1.25 x the covalent radii.", _ROWS),
+        "system": _s("Crystal system label, e.g. 'tetragonal'."),
+        "source": _s("Where the structure comes from."),
+    },
+}
+
+_CIF = _s("Path to a CIF file to build from (needs ASE installed). '~' is "
+          "expanded; prefer an absolute path.")
+_DOPE = _arr("Random substitution: [[host, dopant, fraction], ...], e.g. "
+             "[['Nb','Mo',0.1]] swaps round(n x 0.1) randomly chosen Nb "
+             "for Mo; the dopant bonds like its host.", _ROWS)
+_SEED = _i("Random seed for `dope` (default 7): same seed, same atoms.",
+           minimum=0)
+
+
 # -- The tools ------------------------------------------------------------
 
 TOOLS = [
@@ -336,16 +391,23 @@ TOOLS = [
             "cell face are drawn in every cell that shares it unless "
             "`boundary` is false (then only the true contents of the "
             "block). Crystals rotate and zoom but atoms cannot be "
-            "edited. list_crystals gives the keys."),
+            "edited. list_crystals gives the keys. Instead of `crystal` "
+            "give `custom` (any cell: every atom, or space group + "
+            "asymmetric unit) or `cif` (a file); `dope` substitutes random "
+            "host atoms (a doped block shows the true cell contents)."),
         "input_schema": _obj({
             "crystal": _s("Crystal key, name or formula, e.g. 'cu', "
                           "'rutile', 'nacl'."),
+            "custom": _CUSTOM,
+            "cif": _CIF,
+            "dope": _DOPE,
+            "seed": _SEED,
             "cells": _arr("Repeats along a, b, c (default [1,1,1]).",
                           {"type": "integer", "minimum": 1, "maximum": 30},
                           minItems=3, maxItems=3),
             "boundary": _b("Draw shared boundary atoms in every cell "
                            "(default true)."),
-        }, ["crystal"]),
+        }),
     },
     {
         "name": "build_surface",
@@ -358,9 +420,22 @@ TOOLS = [
             "just under 1 of a layer) picks which plane terminates. Add "
             "`adsorbate` to place a molecule above the slab, e.g. CO on "
             "Pt(111): {smiles:'[C-]#[O+]', height:1.9, mode:'upright'}. "
-            "The adsorbate is positioned, not bonded."),
+            "The adsorbate is positioned, not bonded. Instead of `crystal` "
+            "give `custom` or `cif` (as build_crystal). `complete` keeps "
+            "every coordination polyhedron whole at the cut (ligands "
+            "added from beyond the cut and across the periodic edge, "
+            "orphan ligands dropped: stoichiometric), `dope` substitutes "
+            "random host atoms, e.g. LaNb0.9Mo0.1O4 (001): custom "
+            "scheelite, miller '001', repeat [5,5], layers 2, complete "
+            "true, dope [['Nb','Mo',0.1]]."),
         "input_schema": _obj({
             "crystal": _s("Crystal key, name or formula."),
+            "custom": _CUSTOM,
+            "cif": _CIF,
+            "complete": _b("Whole polyhedra at the cut (the crystal "
+                           "must have polyhedra; default false)."),
+            "dope": _DOPE,
+            "seed": _SEED,
             "miller": _s("Miller indices: '111', '1 1 0', '0001', "
                          "'10-10' (hexagonal h k i l)."),
             "repeat": _arr("Surface cells [u, v] (each 1 to 80).",
@@ -371,7 +446,7 @@ TOOLS = [
             "termination": _n("Where the cut falls, 0 to <1 of a layer.",
                               minimum=0, maximum=0.999),
             "adsorbate": _ADSORBATE,
-        }, ["crystal", "miller"]),
+        }, ["miller"]),
     },
     {
         "name": "add_to_surface",

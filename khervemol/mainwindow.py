@@ -263,7 +263,8 @@ class MainWindow(QMainWindow):
                   "mdi.magnify")
         self._act(m_mol, "From SMILES…", self.from_smiles,
                   "Ctrl+Shift+M", "mdi.molecule")
-        self._act(m_mol, "Import structure file…" + rd, self.import_file)
+        self._act(m_mol, "Import structure file (MOL/SDF/PDB/CIF)…",
+                  self.import_file)
         self._act(m_mol, "Copy SMILES of structure" + rd, self.copy_smiles)
         m_mol.addSeparator()
         self._act(m_mol, "Properties…", self.show_properties, "Ctrl+I",
@@ -924,15 +925,21 @@ class MainWindow(QMainWindow):
         self.shelf_panel.refresh(select=name)
 
     def import_file(self):
-        if not self._need_rdkit():
-            return
         path, _ = QFileDialog.getOpenFileName(
             self, "Import structure", "",
-            "Chemical files (*.mol *.sdf *.pdb);;All files (*)")
+            "Chemical files (*.mol *.sdf *.pdb *.cif);;"
+            "Crystal files (*.cif);;All files (*)")
         if not path:
             return
+        cif = path.lower().endswith(".cif")
+        if not cif and not self._need_rdkit():
+            return
         try:
-            mol = rdkit_io.molecule_from_file(path)
+            if cif:                             # via ASE, see symmetry.py
+                from . import symmetry
+                mol = chem.crystal_model(symmetry.read_cif(path))
+            else:
+                mol = rdkit_io.molecule_from_file(path)
             self.viewer.set_molecule(mol)
             self.tabs.setCurrentIndex(0)
             self._retitle()

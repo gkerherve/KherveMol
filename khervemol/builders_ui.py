@@ -78,7 +78,51 @@ def _crystal_combo(selected="cu"):
     return box
 
 
-class CrystalDialog(_Dialog):
+class _DopeRow:
+    """Random substitution: host, dopant, fraction and seed on one row."""
+
+    def _dope_row(self):
+        row = QHBoxLayout()
+        self.dope_host, self.dope_with = QLineEdit(), QLineEdit()
+        self.dope_host.setPlaceholderText("host, e.g. Nb")
+        self.dope_with.setPlaceholderText("dopant, e.g. Mo")
+        self.dope_frac = self._dspin(0.0, 1.0, 0.0, 0.05, 3)
+        self.dope_seed = self._spin(0, 99999, 7)
+        self.dope_seed.setToolTip("Same seed, same atoms substituted")
+        for lab, w in (("", self.dope_host), ("→", self.dope_with),
+                       ("fraction", self.dope_frac),
+                       ("seed", self.dope_seed)):
+            if lab:
+                row.addWidget(QLabel(lab))
+            row.addWidget(w)
+        self.form.addRow("Doping", row)
+        for w in (self.dope_host, self.dope_with):
+            w.textChanged.connect(self._update)
+        self.dope_frac.valueChanged.connect(self._update)
+
+    def dope_query(self):
+        """``&dope=Nb:Mo:0.1&seed=7`` — or "" when no doping is set."""
+        host = self.dope_host.text().strip().capitalize()
+        dop = self.dope_with.text().strip().capitalize()
+        if not (host and dop and self.dope_frac.value() > 0):
+            return ""
+        return (f"&dope={host}:{dop}:{self.dope_frac.value():g}"
+                f"&seed={self.dope_seed.value()}")
+
+    def dope_hint(self):
+        """A warning when the doping row names an unknown element."""
+        from . import chem
+        q = self.dope_query()
+        if not q:
+            return ""
+        try:
+            chem.parse_dope(q.split("=")[1].split("&")[0])
+        except BuildError as exc:
+            return f"  ⚠ {exc}"
+        return ""
+
+
+class CrystalDialog(_DopeRow, _Dialog):
     """A block of any library crystal: cells along a, b, c."""
 
     def __init__(self, parent=None, key="cu"):
@@ -94,6 +138,7 @@ class CrystalDialog(_Dialog):
         self.faces = QCheckBox("Draw atoms on the cell faces in every cell")
         self.faces.setChecked(True)
         self.form.addRow("", self.faces)
+        self._dope_row()
         for w in (self.nx, self.ny, self.nz):
             w.valueChanged.connect(self._update)
         self.combo.currentIndexChanged.connect(self._update)
@@ -112,7 +157,9 @@ class CrystalDialog(_Dialog):
             f"{c.formula} — {c.system}, {c.space_group}. a = {c.a:.4g} Å, "
             f"b = {c.b:.4g} Å, c = {c.c:.4g} Å{ang}. {len(c.atoms)} atoms per "
             f"cell, {c.computed_density():.3g} g/cm³. About "
-            f"{len(c.atoms) * n} atoms shown.")
+            f"{len(c.atoms) * n} atoms shown."
+            + (" Doped blocks show the true cell contents."
+               if self.dope_query() else "") + self.dope_hint())
 
     def entry(self):
         c = self.crystal()
@@ -120,7 +167,7 @@ class CrystalDialog(_Dialog):
         value = f"{c.key}?cells={cells}"
         if not self.faces.isChecked():
             value += "&boundary=0"
-        return "crystal", value, c.name
+        return "crystal", value + self.dope_query(), c.name
 
 
 class _AdsorbateRows:
@@ -233,7 +280,7 @@ class _AdsorbateRows:
         return True, ""
 
 
-class SurfaceDialog(_AdsorbateRows, _Dialog):
+class SurfaceDialog(_DopeRow, _AdsorbateRows, _Dialog):
     """A slab of any crystal cut along (hkl), optionally with a molecule
     lying on it — the one you drew, a kept one, or one typed as SMILES."""
 
@@ -262,6 +309,12 @@ class SurfaceDialog(_AdsorbateRows, _Dialog):
         for t in (0.0, 0.25, 0.5, 0.75):
             self.term.addItem(f"Cut at {t:.2f} of a layer", t)
         self.form.addRow("Termination", self.term)
+        self.whole = QCheckBox("Whole polyhedra (add the ligands cut off, "
+                               "drop orphan ones)")
+        self.whole.setToolTip("Keeps every coordination polyhedron whole at "
+                              "the cut, so the slab stays stoichiometric")
+        self.form.addRow("", self.whole)
+        self._dope_row()
         self._adsorbate_rows(molecule, shelf)
         self.auto.toggled.connect(self._sync)
         self.miller.textChanged.connect(self._update)
@@ -279,8 +332,10 @@ class SurfaceDialog(_AdsorbateRows, _Dialog):
         try:
             hkl = surface.parse_miller(self.miller.text())
             c = crystal_library.LIBRARY[self.combo.currentData()]
+            self.whole.setEnabled(bool(c.polyhedra))
             text = (f"{surface.label(c, hkl)} — bulk-terminated slab, top "
                     "surface facing up (no relaxation or reconstruction).")
+            text += self.dope_hint()
             ok, hint = self._ads_ready()
             if not ok:
                 text += "  " + hint
@@ -303,7 +358,9 @@ class SurfaceDialog(_AdsorbateRows, _Dialog):
             value += f"&repeat={self.nx.value()},{self.ny.value()}"
         if self.term.currentData() is not None:
             value += f"&termination={self.term.currentData()}"
-        return "surface", value, f"{key} ({hkl})"
+        if self.whole.isEnabled() and self.whole.isChecked():
+            value += "&complete=1"
+        return "surface", value + self.dope_query(), f"{key} ({hkl})"
 
 
 class AddMoleculeDialog(_AdsorbateRows, _Dialog):

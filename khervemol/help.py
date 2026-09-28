@@ -254,13 +254,18 @@ the library tree):</p>
 many unit cells to show along a, b and c. The block is drawn with its cell
 outline and the bonds between nearest neighbours; atoms on a cell face are
 drawn in every cell that shares it (untick for the true cell contents). The
-summary gives the space group, lattice, atoms per cell and density.</li>
+summary gives the space group, lattice, atoms per cell and density.
+<i>Doping</i> (host, dopant, fraction, seed) swaps randomly chosen host atoms
+for the dopant, reproducibly for a given seed.</li>
 <li><b>Surface builder…</b> (Ctrl+Shift+F) — a slab of any crystal cut
 along any plane: type Miller indices (<code>111</code>, <code>1 1 0</code>,
 <code>1-10</code>) or four hexagonal indices (<code>0001</code>,
 <code>10-10</code>), then cells, layers and <i>termination</i> (automatic =
 the widest gap between planes, breaking the fewest bonds). Slabs are
-bulk-terminated: no relaxation or reconstruction.</li>
+bulk-terminated: no relaxation or reconstruction. <i>Whole polyhedra</i>
+gives every centre atom all its ligands (from beyond the cut or across the
+periodic edge) and drops orphan ligands, so a slab of isolated tetrahedra
+stays stoichiometric; <i>Doping</i> is applied afterwards.</li>
 <li><b>Graphene, nanotubes &amp; fullerenes…</b> (Ctrl+Shift+G) — graphene
 sheets (1–6 layers, AB / ABA / ABC / AA or twisted), graphite surfaces, armchair
 and zigzag nanoribbons, quantum dots, a vacancy or nitrogen doping, (n,m)
@@ -382,7 +387,8 @@ appears as a red line in the chat.</p>
 flat depiction into the 2D sketch. Without RDKit the built-in builder does
 this too.</li>
 <li><b>Import structure file…</b> — open a <code>.mol</code>,
-<code>.sdf</code> or <code>.pdb</code> file.</li>
+<code>.sdf</code> or <code>.pdb</code> file (needs RDKit), or a
+<code>.cif</code> crystal (needs ASE: <code>pip install ase</code>).</li>
 <li><b>Copy SMILES of structure</b> — best-effort canonical SMILES of the
 current model, to the clipboard.</li>
 </ul>

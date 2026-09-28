@@ -10,8 +10,9 @@ kind       value                                        built by
 model      a classic hand-placed model key              `library.make`
 compound   a `compounds` key                            `chem`
 smiles     a SMILES string                              RDKit, else `chem`
-crystal    ``key`` or ``key?cells=2,2,2``               `chem`
+crystal    ``key`` or ``key?cells=2,2,2&dope=Ti:Zr:0.1``  `chem`
 surface    ``key:hkl`` or ``key:hkl?repeat=6,6&layers=4``  `chem`
+           (+ ``&complete=1`` whole polyhedra, ``&dope=Nb:Mo:0.1&seed=7``)
 nano       ``graphene?width=3&layers=2`` …              `chem`
 polymer    ``key?n=8`` or ``custom?unit=CC(Cl)&n=6``    `polymers`
 reaction   an equation, ``2 H2 + O2 -> 2 H2O``          `reactions`
@@ -74,7 +75,9 @@ def build(kind, value, label=None):
         key, p = _split(value)
         reps = _ints(p.get("cells"), (1, 1, 1))
         return chem.crystal_model(key, reps,
-                                  boundary=p.get("boundary", "1") != "0")
+                                  boundary=p.get("boundary", "1") != "0",
+                                  dope=p.get("dope"),
+                                  seed=int(p.get("seed", 7)))
     if kind == "surface":
         head, p = _split(value)
         key, _, hkl = head.partition(":")
@@ -82,7 +85,11 @@ def build(kind, value, label=None):
         return chem.surface_model(key, hkl or "111", repeat,
                                   int(p.get("layers", 3)),
                                   float(p["termination"])
-                                  if "termination" in p else None)
+                                  if "termination" in p else None,
+                                  dope=p.get("dope"),
+                                  seed=int(p.get("seed", 7)),
+                                  complete=p.get("complete", "0")
+                                  not in ("0", "false", "False"))
     if kind == "nano":
         head, p = _split(value)
         kw = {}

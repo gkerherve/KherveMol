@@ -6,3 +6,8 @@ qtawesome>=1.2
 # if this is missing — the import is guarded — but the standard install
 # includes it.
 rdkit>=2023.3
+
+# Optional: reads CIF files (Molecule ▸ Import structure file…) and expands
+# space group + asymmetric unit into a full cell (MCP `custom` crystals).
+# The app runs without it — the import is lazy and guarded.
+# ase>=3.22

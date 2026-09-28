@@ -37,7 +37,8 @@ from PyQt5.QtCore import QBuffer, QByteArray, QIODevice
 from . import (__version__, chem, chemexport, document, elements, entries,
                meshexport,
                library, mcp_library, model, polymers, properties, reactions,
-               rdkit_io, shelf, svgexport)
+               rdkit_io, shelf, svgexport, symmetry)
+from . import crystal as crystal_mod
 from .crystal import BuildError
 from .mcp_schema import (DEFAULT_IMAGE_SIZE, NANO_PARAMS, check_args,
                          tool_schema)
@@ -408,14 +409,34 @@ class McpToolExecutor:
         self._show(mol, args.get("label"))
         return self._built()
 
+    @staticmethod
+    def _crystal_arg(args):
+        """The crystal of build_crystal / build_surface: a library name, a
+        `custom` cell (atoms, or space group + basis) or a `cif` file."""
+        given = [k for k in ("crystal", "custom", "cif") if args.get(k)]
+        if len(given) != 1:
+            raise ToolError("Give exactly one of `crystal` (library), "
+                            "`custom` (a cell) or `cif` (a file path).")
+        try:
+            if given[0] == "custom":
+                return crystal_mod.custom(args["custom"])
+            if given[0] == "cif":
+                return symmetry.read_cif(os.path.expanduser(args["cif"]))
+        except ValueError as exc:
+            raise ToolError(str(exc))
+        return mcp_library.crystal_by_name(args["crystal"])
+
     def _t_build_crystal(self, args):
-        crystal = mcp_library.crystal_by_name(args["crystal"])
+        crystal = self._crystal_arg(args)
         cells = tuple(args.get("cells", (1, 1, 1)))
         mol = chem.crystal_model(crystal, cells,
-                                 boundary=args.get("boundary", True))
+                                 boundary=args.get("boundary", True),
+                                 dope=args.get("dope"),
+                                 seed=args.get("seed", 7))
         self._show(mol)
         return self._built(crystal=mcp_library.crystal_row(crystal),
-                           cells=list(cells))
+                           cells=list(cells),
+                           composition=_composition(mol))
 
     def _adsorbate(self, spec):
         given = [k for k in ("smiles", "compound", "kept") if spec.get(k)]
@@ -440,12 +461,14 @@ class McpToolExecutor:
                                       spec.get("smiles"))
 
     def _t_build_surface(self, args):
-        crystal = mcp_library.crystal_by_name(args["crystal"])
+        crystal = self._crystal_arg(args)
         spec = args.get("adsorbate")
         molecule = self._adsorbate(spec) if spec is not None else None
         base = chem.surface_model(
             crystal, args["miller"], args.get("repeat"),
-            args.get("layers", 3), args.get("termination"))
+            args.get("layers", 3), args.get("termination"),
+            dope=args.get("dope"), seed=args.get("seed", 7),
+            complete=args.get("complete", False))
         slab_atoms = len(base.atoms)
         mol = base
         if molecule is not None:
@@ -457,7 +480,8 @@ class McpToolExecutor:
                 dx=spec.get("dx", 0.0), dy=spec.get("dy", 0.0),
                 mode=mode, spin=spec.get("spin", 0.0))
         self._show(mol)
-        extra = {"crystal": crystal.key, "slab_atoms": slab_atoms}
+        extra = {"crystal": crystal.key, "slab_atoms": slab_atoms,
+                 "composition": _composition(base)}
         if molecule is not None:
             extra["adsorbate"] = {"label": molecule.label,
                                   "formula": molecule.formula(),
@@ -961,6 +985,14 @@ class McpToolExecutor:
         result["ok"] = True
         result["bytes"] = os.path.getsize(result["path"])
         return result
+
+
+def _composition(mol):
+    """{element: count} of a built structure."""
+    out = {}
+    for a in mol.atoms:
+        out[a[0]] = out.get(a[0], 0) + 1
+    return dict(sorted(out.items()))
 
 
 def _stand_diatomic(molecule):

@@ -23,6 +23,7 @@ the Free Software Foundation, either version 3 of the License, or
 """
 
 import math
+import random
 
 from . import compounds, crystal_library, elements, nano, smiles, surface
 from .crystal import BuildError
@@ -229,7 +230,104 @@ def _pair_cutoffs(crystal, slack=1.12):
     out = {}
     for e1, e2, d in crystal.bonds:
         out[tuple(sorted((e1, e2)))] = d * slack
+    out.update(getattr(crystal, "cutoffs", None) or {})
     return out
+
+
+# ---------------------------------------------------------------- doping
+def parse_dope(value):
+    """``[(host, dopant, fraction)]`` from a list of triples or text such
+    as ``"Nb:Mo:0.1, Ti:Zr:0.05"``; BuildError when it cannot be read."""
+    if not value:
+        return []
+    if isinstance(value, str):
+        value = [part.split(":") for part in value.replace(";", ",")
+                 .split(",") if part.strip()]
+    out = []
+    for row in value:
+        try:
+            host, dop, frac = row
+            host = str(host).strip().capitalize()
+            dop = str(dop).strip().capitalize()
+            frac = float(frac)
+        except (TypeError, ValueError):
+            raise BuildError("dope is host:dopant:fraction, e.g. "
+                             "Nb:Mo:0.1.")
+        if not (elements.NUMBERS.get(host) and elements.NUMBERS.get(dop)):
+            raise BuildError(f"Unknown element in dope {host}:{dop}.")
+        if not 0 <= frac <= 1:
+            raise BuildError("A dopant fraction runs from 0 to 1.")
+        out.append((host, dop, frac))
+    return out
+
+
+def substitute(elems, rules, seed=7):
+    """*elems* (a list of element symbols, changed in place and returned)
+    with ``round(n x fraction)`` randomly chosen host atoms of each
+    ``(host, dopant, fraction)`` rule substituted — the same choice for
+    the same *seed*."""
+    rng = random.Random(seed)
+    for host, dop, frac in parse_dope(rules):
+        idx = [i for i, e in enumerate(elems) if e == host]
+        for i in sorted(rng.sample(idx, round(len(idx) * frac))):
+            elems[i] = dop
+    return elems
+
+
+def _dope_cutoffs(cutoffs, rules):
+    """A dopant bonds like the host it replaces."""
+    out = dict(cutoffs)
+    for host, dop, _f in parse_dope(rules):
+        for (e1, e2), d in cutoffs.items():
+            if e1 == host:
+                out.setdefault(tuple(sorted((dop, e2))), d)
+            if e2 == host:
+                out.setdefault(tuple(sorted((e1, dop))), d)
+            if e1 == e2 == host:
+                out.setdefault((dop, dop), d)
+    return out
+
+
+# ------------------------------------------------------ whole polyhedra
+def complete_polyhedra(els, pts, pool, poly):
+    """Whole polyhedra at a cut: every centre of *els*/*pts* gets all its
+    ligands within ``poly['cutoff']`` — taken from the atoms themselves or
+    from *pool* (``[(el, xyz)]``, the bulk around them: periodic images and
+    the layers beyond the cut) — and ligands bonded to no centre are
+    dropped, so a slab of isolated polyhedra (scheelite NbO4) stays
+    stoichiometric; shared ligands (rutile) are kept once. Returns new
+    ``(els, pts)``."""
+    centre, ligand, cut = poly["centre"], poly["ligand"], poly["cutoff"]
+    cands = [p for e, p in zip(els, pts) if e == ligand]
+    cands += [p for e, p in pool if e == ligand]
+    grid = {}
+    for p in cands:
+        grid.setdefault(tuple(int(math.floor(x / cut)) for x in p),
+                        []).append(p)
+    keep, seen = [], set()
+    for e, p in zip(els, pts):
+        if e != centre:
+            continue
+        g = tuple(int(math.floor(x / cut)) for x in p)
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                for dz in (-1, 0, 1):
+                    for q in grid.get((g[0] + dx, g[1] + dy, g[2] + dz), ()):
+                        k = tuple(round(x, 3) for x in q)
+                        if k not in seen and 1e-6 < math.dist(p, q) <= cut:
+                            seen.add(k)
+                            keep.append(q)
+    out_e = [e for e in els if e != ligand]
+    out_p = [p for e, p in zip(els, pts) if e != ligand]
+    return out_e + [ligand] * len(keep), out_p + keep
+
+
+def _nn(crystal):
+    """The shortest bond length Å (2.5 when the crystal names none)."""
+    ds = [d for _a, _b, d in crystal.bonds]
+    ds += [d / 1.12 for d in (getattr(crystal, "cutoffs", None) or {})
+           .values()]
+    return min(ds, default=2.5)
 
 
 def find_bonds(points, elems, cutoffs):
@@ -368,23 +466,30 @@ def crystal_stack(crystal, cells=(1, 1, 1), tilts=None, owners=None,
     atoms = [[a[0], a[1] - mid[0], a[2] - mid[1], a[3] - mid[2]]
              for a in atoms]
     edges_out = _shift_edges(edges_out, mid)
-    nn = min((d for _a, _b, d in crystal.bonds), default=2.5)
+    nn = _nn(crystal)
     label = crystal.name if not stacked else \
         f"{crystal.name} ({cells[0]}×{cells[1]}×{cells[2]} cells)"
     return (atoms, bonds, edges_out, _ball_scale({a[0] for a in atoms}, nn),
             label)
 
 
-def crystal_model(crystal, reps=(1, 1, 1), boundary=True):
+def crystal_model(crystal, reps=(1, 1, 1), boundary=True, dope=None,
+                  seed=7):
     """A block of *crystal*: its conventional cell repeated ``reps``
     times. With *boundary*, atoms sitting on a cell face are drawn in every
     cell that shares it (a complete-looking cube) and the block is a
     stackable lattice — the crystal panel can change the cell counts and
     tilt a cell as a defect; without, only the atoms inside the half-open
-    cell (the true contents), as a fixed block."""
+    cell (the true contents), as a fixed block. *dope* (``[(host, dopant,
+    fraction)]``, see `substitute`) substitutes random host atoms reproducibly
+    for *seed*; a doped block, or a crystal not in the library (custom,
+    CIF), is always a fixed block."""
     if isinstance(crystal, str):
         crystal = crystal_library.get(crystal)
     nx, ny, nz = (int(n) for n in reps)
+    rules = parse_dope(dope)
+    if crystal_library.LIBRARY.get(crystal.key) is not crystal or rules:
+        boundary = False
     if boundary:
         mol = Molecule([], [], name=f"crystal:{crystal.key}", az=DEFAULT_AZ,
                        el=DEFAULT_EL, bond=1.0, crystal=True,
@@ -417,11 +522,12 @@ def crystal_model(crystal, reps=(1, 1, 1), boundary=True):
     a1, a2, a3 = crystal.vectors()
     edges = _wire_box((0.0, 0.0, 0.0), tuple(nx * x for x in a1),
                       tuple(ny * x for x in a2), tuple(nz * x for x in a3))
-    bonds = find_bonds(pts, els, _pair_cutoffs(crystal))
+    substitute(els, rules, seed)
+    bonds = find_bonds(pts, els, _dope_cutoffs(_pair_cutoffs(crystal), rules))
     mid = [(nx * a1[i] + ny * a2[i] + nz * a3[i]) / 2 for i in range(3)]
     atoms = [[el, p[0] - mid[0], p[1] - mid[1], p[2] - mid[2]]
              for el, p in zip(els, pts)]
-    nn = min((d for _a, _b, d in crystal.bonds), default=2.5)
+    nn = _nn(crystal)
     label = f"{crystal.name} — cell contents ({nx}×{ny}×{nz})"
     return Molecule(atoms, bonds, name=f"cell:{crystal.key}", label=label,
                     az=DEFAULT_AZ, el=DEFAULT_EL, bond=1.0,
@@ -435,16 +541,30 @@ def crystal_keys():
 
 # -------------------------------------------------------------- surfaces
 def surface_model(crystal, miller="111", repeat=None, layers=3,
-                  termination=None):
+                  termination=None, dope=None, seed=7, complete=False):
     """A slab of *crystal* cut along (hkl), bulk-terminated: top surface at
     z = 0 (facing +z), ``repeat`` surface cells across (None: about 15 Å),
-    ``layers`` interplanar spacings deep."""
+    ``layers`` interplanar spacings deep.
+
+    *complete* (for a crystal with ``polyhedra``) keeps every polyhedron
+    whole: each centre in the slab gets all its ligands — from the layers
+    beyond the cut or across the in-plane periodic edge — and ligands with
+    no centre are dropped (isolated polyhedra stay stoichiometric). *dope*
+    (``[(host, dopant, fraction)]``) then substitutes random host atoms,
+    the same ones for the same *seed*."""
     if isinstance(crystal, str):
         crystal = crystal_library.get(crystal)
     hkl = surface.parse_miller(miller)
+    rules = parse_dope(dope)
+    poly = crystal.polyhedra if complete else None
+    if complete and not poly:
+        raise BuildError(f"{crystal.name} has no polyhedra to complete.")
     spec = surface.SurfaceSpec(crystal, hkl, (1, 1), int(layers), termination)
     spec.check()
     cell = surface.surface_cell(spec)
+    if poly:
+        pad = max(1, math.ceil(poly["cutoff"] / max(cell["d"], 0.1)))
+        cell = surface.surface_cell(spec, pad=pad)
     if repeat is None:                   # a slab about 15 Å across
         def reach(v):
             return max(1, min(10, round(15.0 / (math.hypot(v[0], v[1])
@@ -462,15 +582,28 @@ def surface_model(crystal, miller="111", repeat=None, layers=3,
     if n_atoms > MAX_ATOMS:
         raise BuildError(f"{n_atoms} atoms is more than the viewer takes "
                          f"({MAX_ATOMS}): fewer repeats or layers.")
+
+    def tiles(atoms, ri, rj):
+        for i in ri:
+            for j in rj:
+                ox, oy = i * U[0] + j * V[0], i * U[1] + j * V[1]
+                for el, p in atoms:
+                    yield el, (p[0] + ox, p[1] + oy, p[2])
     els, pts = [], []
-    for i in range(nx):
-        for j in range(ny):
-            ox = i * U[0] + j * V[0]
-            oy = i * U[1] + j * V[1]
-            for el, p in cell["atoms"]:
-                els.append(el)
-                pts.append((p[0] + ox, p[1] + oy, p[2]))
-    bonds = find_bonds(pts, els, _pair_cutoffs(crystal))
+    for el, p in tiles(cell["atoms"], range(nx), range(ny)):
+        els.append(el)
+        pts.append(p)
+    if poly:
+        m = 1 + math.ceil(poly["cutoff"] / max(
+            min(math.hypot(*U[:2]), math.hypot(*V[:2])), 0.1))
+        ri, rj = range(-m, nx + m), range(-m, ny + m)
+        pool = [(el, p) for el, p in tiles(cell["pad_atoms"], ri, rj)]
+        pool += [(el, p) for (i, j) in ((i, j) for i in ri for j in rj
+                                        if not (0 <= i < nx and 0 <= j < ny))
+                 for el, p in tiles(cell["atoms"], (i,), (j,))]
+        els, pts = complete_polyhedra(els, pts, pool, poly)
+    substitute(els, rules, seed)
+    bonds = find_bonds(pts, els, _dope_cutoffs(_pair_cutoffs(crystal), rules))
     depth = cell["depth"]
     edges = _wire_box((0.0, 0.0, -depth), tuple(nx * x for x in U),
                       tuple(ny * x for x in V), (0.0, 0.0, depth))
@@ -478,8 +611,11 @@ def surface_model(crystal, miller="111", repeat=None, layers=3,
            -depth / 2]
     atoms = [[el, p[0] - mid[0], p[1] - mid[1], p[2] - mid[2]]
              for el, p in zip(els, pts)]
-    nn = min((d for _a, _b, d in crystal.bonds), default=2.5)
+    nn = _nn(crystal)
     label = f"{surface.label(crystal, hkl)} — {nx}×{ny}, {layers} layers"
+    if rules:
+        label += ", " + ", ".join(f"{frac:g} {dop} for {host}"
+                                  for host, dop, frac in rules)
     # look down onto the surface at a slant
     return Molecule(atoms, bonds, name=f"surface:{crystal.key}:{miller}",
                     label=label, az=DEFAULT_AZ, el=math.radians(38.0),

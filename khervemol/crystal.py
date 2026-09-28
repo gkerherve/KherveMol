@@ -76,6 +76,9 @@ class Crystal:
     density: float | None = None
     bonds: list = field(default_factory=list)
     source: str = ""
+    #: explicit bond cutoffs {(el, el) sorted: max length Å}, used as they
+    #: are (the ``bonds`` distances get a 12 % slack instead)
+    cutoffs: dict = field(default_factory=dict)
 
     # ------------------------------------------------------- geometry
     def vectors(self):
@@ -191,8 +194,15 @@ def custom(spec: dict) -> Crystal:
     """A crystal from a plain dict — what an assistant passes when the
     library lacks one: ``{"name", "a", "b", "c", "alpha", "beta",
     "gamma", "atoms": [[el, fx, fy, fz], ...], "polyhedra": {"centre",
-    "ligand", "cutoff"}, "units": "angstrom" | "nm"}``. Raises
-    ValueError with the reason."""
+    "ligand", "cutoff"}, "bonds": [[el, el, max_length], ...], "units":
+    "angstrom" | "nm"}``.
+
+    Instead of ``atoms`` (every atom of the cell) it may give ``"space_group"``
+    (number or Hermann-Mauguin symbol), ``"setting"`` (1 or 2, the origin
+    choice) and ``"basis"`` (the asymmetric unit, ``[[el, fx, fy, fz],
+    ...]``), expanded by `symmetry.expand` — that needs ASE. Without
+    ``bonds`` or ``polyhedra`` every element pair closer than 1.25 x the
+    sum of covalent radii is bonded. Raises ValueError with the reason."""
     if not isinstance(spec, dict):
         raise ValueError("A custom crystal is an object with a, b, c, "
                          "angles and atoms.")
@@ -212,17 +222,20 @@ def custom(spec: dict) -> Crystal:
     if min(a, b, c) <= 0 or not all(0 < x < 180 for x in angles):
         raise ValueError("Cell lengths must be positive and angles "
                          "between 0 and 180 degrees.")
-    atoms = []
-    for row in spec.get("atoms") or []:
-        if not isinstance(row, (list, tuple)) or len(row) != 4:
-            raise ValueError("Each atom is [element, fx, fy, fz] "
-                             "(fractional coordinates).")
-        el = str(row[0]).strip().capitalize()
-        if el not in elements.NUMBERS:
-            raise ValueError(f"Unknown element '{row[0]}'.")
-        atoms.append((el, *(float(x) % 1.0 for x in row[1:])))
+    sg = spec.get("space_group")
+    expand = spec.get("basis") is not None and not spec.get("atoms")
+    rows = _rows(spec.get("basis") if expand else spec.get("atoms"))
+    if expand:
+        if sg in (None, ""):
+            raise ValueError("A 'basis' (asymmetric unit) needs a "
+                             "'space_group' to expand it.")
+        from . import symmetry
+        rows = symmetry.expand(sg, rows, (a, b, c, *angles),
+                               int(spec.get("setting", 1)))
+    atoms = [(el, *(x % 1.0 for x in f)) for el, *f in rows]
     if not atoms:
-        raise ValueError("A custom crystal needs at least one atom.")
+        raise ValueError("A custom crystal needs at least one atom "
+                         "('atoms', or 'space_group' + 'basis').")
     poly = spec.get("polyhedra")
     if poly:
         try:
@@ -232,14 +245,63 @@ def custom(spec: dict) -> Crystal:
                     "sites": None}
         except (KeyError, TypeError, ValueError):
             raise ValueError("polyhedra is {centre, ligand, cutoff}.")
+    cutoffs = {}
+    for row in spec.get("bonds") or []:
+        try:
+            e1, e2, d = (str(row[0]).capitalize(), str(row[1]).capitalize(),
+                         float(row[2]) * to_a)
+        except (IndexError, TypeError, ValueError):
+            raise ValueError("Each bond is [element, element, max length].")
+        cutoffs[tuple(sorted((e1, e2)))] = d
+    if poly:
+        cutoffs.setdefault(tuple(sorted((poly["centre"], poly["ligand"]))),
+                           poly["cutoff"])
     name = str(spec.get("name") or "Custom crystal")
     crystal = Crystal(
         key="custom", name=name, formula=str(spec.get("formula") or name),
         category="Custom", system=str(spec.get("system") or "custom"),
-        space_group=str(spec.get("space_group") or "?"),
+        space_group=str(sg if sg not in (None, "") else "?"),
         a=a, b=b, c=c, alpha=angles[0], beta=angles[1], gamma=angles[2],
-        atoms=atoms, polyhedra=poly or None,
+        atoms=atoms, polyhedra=poly or None, cutoffs=cutoffs,
         source=str(spec.get("source") or "given by the user"))
     if crystal.volume() < 1e-6:
         raise ValueError("Those angles give a flat cell.")
+    if not cutoffs:
+        auto_bonds(crystal)
     return crystal
+
+
+def _rows(rows):
+    """[(el, fx, fy, fz)] checked from ``[[el, fx, fy, fz], ...]``."""
+    out = []
+    for row in rows or []:
+        if not isinstance(row, (list, tuple)) or len(row) != 4:
+            raise ValueError("Each atom is [element, fx, fy, fz] "
+                             "(fractional coordinates).")
+        el = str(row[0]).strip().capitalize()
+        if el not in elements.NUMBERS:
+            raise ValueError(f"Unknown element '{row[0]}'.")
+        try:
+            out.append((el, *(float(x) for x in row[1:])))
+        except (TypeError, ValueError):
+            raise ValueError(f"Coordinates of {el} must be numbers.")
+    return out
+
+
+def auto_bonds(crystal, slack=1.25):
+    """Fill ``crystal.bonds`` with the nearest distance of every element
+    pair closer than *slack* x the sum of their covalent radii — the bond
+    guess for a crystal given without bonds (a CIF, a custom cell)."""
+    best = {}
+    pts = [(el, crystal.cart(f)) for el, *f in crystal.atoms]
+    for i, (e1, p) in enumerate(pts):
+        for e2, *f2 in crystal.atoms[i:]:
+            key = tuple(sorted((e1, e2)))
+            for q in crystal._images(f2, 1):
+                d = math.dist(p, q)
+                if 1e-6 < d < best.get(key, math.inf):
+                    best[key] = d
+    found = [(e1, e2, round(d, 3)) for (e1, e2), d in sorted(best.items())
+             if d < slack * (radius(e1) + radius(e2))]
+    crystal.bonds = found
+    return found
