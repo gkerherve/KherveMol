@@ -259,7 +259,7 @@ def surface_cell(spec: SurfaceSpec):
         gg = wrap(g - term)
         for layer in range(spec.layers):
             z = gg - layer                   # layers below the top one
-            s2, t2 = wrap(s + (z - g) * sw), wrap(t + (z - g) * tw)
+            s2, t2 = wrap(s + z * sw), wrap(t + z * tw)
             atoms.append((el, (s2 * ru[0] + t2 * rv[0],
                                s2 * ru[1] + t2 * rv[1], z * d)))
     top = max(p[2] for _e, p in atoms)
